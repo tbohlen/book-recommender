@@ -8,5 +8,6 @@ export interface Book {
   author: string | null;
   description: string | null;
   imageUrl: string | null;
+  rating?: number;
   themes: string[];
 }

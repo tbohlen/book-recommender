@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import { useState } from "react";
 import { State, Book } from "../types/state";
 import Display from "../components/display";
@@ -6,6 +6,7 @@ import { Input } from "../components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { v4 as uuidv4 } from "uuid";
+import { MOCK_BOOK } from "@/lib/mock-data";
 
 export default function Home() {
   const [state, setState] = useState({ books: [] } as State);
@@ -15,34 +16,8 @@ export default function Home() {
     const form = event.currentTarget;
     const formData = new FormData(form);
     const book = formData.get("book") as string;
-    // this is just for testing
-    const themeExamples = [
-      "Science Fiction",
-      "Historical Fiction",
-      "Non-Fiction",
-      "Sad",
-      "Funny",
-      "Italy",
-      "South Africa",
-      "Japan",
-      "Complex Characters",
-      "Literary References",
-    ];
-    const imageExamples = [
-      "https://placekittens.com/g/200/300",
-      "https://placekittens.com/g/200/200",
-    ];
-    const newBook = {
-      id: uuidv4(),
-      title: book,
-      description: "This is a description of the book.",
-      imageUrl: imageExamples[Math.floor(Math.random() * imageExamples.length)],
-      themes: [
-        themeExamples[Math.floor(Math.random() * themeExamples.length)],
-        themeExamples[Math.floor(Math.random() * themeExamples.length)],
-        themeExamples[Math.floor(Math.random() * themeExamples.length)],
-      ],
-    } as Book;
+
+    const newBook = { ...MOCK_BOOK, title: book } as Book;
     setState((prevState) => ({
       books: [newBook, ...prevState.books],
     }));
@@ -50,7 +25,7 @@ export default function Home() {
   };
 
   return (
-    <main className="bg-white dark:bg-black w-full h-full">
+    <main className="bg-white dark:bg-black w-full h-full overflow-hidden">
       <Display state={state} />
       <footer className="fixed bottom-0 left-0 w-full bg-stone-200 dark:bg-gray-800 p-4 flex justify-center">
         <form onSubmit={handleSubmit}>

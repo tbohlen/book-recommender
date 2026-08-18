@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Book Recommender
+
+A Next.js app that visualizes book recommendations as an interactive node graph.
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Visuals
 
-## Learn More
+The `components/display.tsx` component is a p5.js sketch that renders an interactive canvas:
 
-To learn more about Next.js, take a look at the following resources:
+- **Book card** — shows cover image on the front, flips to show title, author, rating, description, and themes on the back
+- **Theme nodes** — arc of clickable circles, one per theme on the current book. Click to expand.
+- **Rec nodes** — 3 nodes radiate from each expanded theme node, showing related books. Double-click a rec node to navigate into that book.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The form in the footer submits a title → React state updates → the sketch receives the new book via `sketchRef`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## AI Integration
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Everything uses mock data in `lib/mock-data.ts`. There are two things to replace:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**1. `MOCK_BOOK`** — used in `app/page.tsx` when the user submits a title. Currently spreads mock fields onto whatever title was typed. Replace the `handleSubmit` logic with a real call to your `/api/book` route that returns a full `Book` object.
+
+**2. `MOCK_REC_BOOKS`** — used in `display.tsx` to populate rec nodes when a theme is expanded. Replace `buildRecNodes` in `display.tsx` with a fetch to your `/api/recs` route, passing the current book + theme label.
+
+### The data shape
+
+Both routes need to return objects matching the `Book` type in `types/state.ts`:
+
+```ts
+{
+  id: string
+  title: string
+  author: string | null
+  description: string | null
+  imageUrl: string | null
+  rating?: number
+  themes: string[]
+}
+```
