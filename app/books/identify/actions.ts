@@ -1,5 +1,5 @@
 "use server";
-import { IdentifyBookState, Book, BookWithThemes } from "./types";
+import { IdentifyBookState, GoogleBook, BookWithThemes } from "./types";
 import { books } from "@googleapis/books";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
@@ -41,7 +41,7 @@ export default async function identifyBook(
 
   // validator?
 
-  let firstBook: Book;
+  let firstBook: GoogleBook;
   try {
     const res = await booksApi.volumes.list({
       q: search,
