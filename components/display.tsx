@@ -55,7 +55,7 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
   );
 
   useEffect(() => {
-    let instance: InstanceType<typeof import("p5").default> | null = null;
+    let instance: p5 | null = null;
     let cancelled = false;
 
     import("p5").then(({ default: P5 }) => {
