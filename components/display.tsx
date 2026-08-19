@@ -2,8 +2,31 @@
 
 import { useEffect, useRef } from "react";
 import type p5 from "p5";
-import { State, Book } from "../types/state";
+import { BookWithThemes } from "../app/books/identify/types";
 import { MOCK_REC_BOOKS } from "../lib/mock-data";
+
+/**
+ * Picks the best available cover image URL from a Google Books `imageLinks`
+ * object, preferring higher-resolution links when present.
+ */
+function getCoverImageUrl(book: BookWithThemes): string | null {
+  const links = book.imageLinks;
+  if (!links) return null;
+  return (
+    links.medium ??
+    links.small ??
+    links.thumbnail ??
+    links.smallThumbnail ??
+    links.large ??
+    links.extraLarge ??
+    null
+  );
+}
+
+/** Joins a Google Books `authors` list into a single display string. */
+function getAuthorLabel(book: BookWithThemes): string {
+  return book.authors?.join(", ") ?? "";
+}
 
 interface ThemeNode {
   x: number;
@@ -19,15 +42,17 @@ interface RecNode {
   y: number;
   label: string;
   angle: number;
-  mockBook: Book;
+  mockBook: BookWithThemes;
 }
 
 const CARD_W = 230;
 const CARD_H = 230;
 
-export default function Display({ state }: { state: State }) {
+export default function Display({ books }: { books: BookWithThemes[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const sketchRef = useRef<{ setBook: (b: Book) => void } | null>(null);
+  const sketchRef = useRef<{ setBook: (b: BookWithThemes) => void } | null>(
+    null,
+  );
 
   useEffect(() => {
     let instance: InstanceType<typeof import("p5").default> | null = null;
@@ -38,7 +63,7 @@ export default function Display({ state }: { state: State }) {
       instance = new P5((p: p5) => {
         let ARC_START: number;
         let ARC_END: number;
-        let book: Book | null = null;
+        let book: BookWithThemes | null = null;
         let bookImg: p5.Image | "failed" | null = null;
         let themeNodes: ThemeNode[] = [];
         let isFlipped = false;
@@ -62,13 +87,13 @@ export default function Display({ state }: { state: State }) {
         }
 
         // ─── setBook ──────────────────────────────────────────────────────────────
-        function setBook(b: Book) {
+        function setBook(b: BookWithThemes) {
           book = b;
           isFlipped = false;
           bookImg = null;
-          themeNodes = buildThemeNodes(b.themes);
+          themeNodes = buildThemeNodes(b.themes ?? []);
           p.loadImage(
-            b.imageUrl ?? "",
+            getCoverImageUrl(b) ?? "",
             (img) => {
               bookImg = img;
             },
@@ -105,7 +130,7 @@ export default function Display({ state }: { state: State }) {
             const mockBook =
               MOCK_REC_BOOKS[mockBookIdx % MOCK_REC_BOOKS.length];
             mockBookIdx++;
-            const words = mockBook.title.split(" ");
+            const words = (mockBook.title ?? "").split(" ");
             const label = (words[0] === "The" ? words[1] : words[0]).substring(
               0,
               7,
@@ -129,7 +154,7 @@ export default function Display({ state }: { state: State }) {
 
         p.windowResized = () => {
           p.resizeCanvas(p.windowWidth, p.windowHeight);
-          if (book) themeNodes = buildThemeNodes(book.themes);
+          if (book) themeNodes = buildThemeNodes(book.themes ?? []);
         };
 
         // ─── Draw ─────────────────────────────────────────────────────────────────
@@ -244,21 +269,22 @@ export default function Display({ state }: { state: State }) {
           p.noStroke();
           let y = 0;
 
+          const title = book!.title ?? "";
           p.fill(20);
           p.textSize(11);
           p.textStyle(p.BOLD);
-          p.text(book!.title, 0, y, mw);
-          y += estimateTextH(book!.title, 11, mw) + 4;
+          p.text(title, 0, y, mw);
+          y += estimateTextH(title, 11, mw) + 4;
 
           p.textStyle(p.NORMAL);
           p.fill(110);
           p.textSize(10);
-          p.text(book!.author ?? "", 0, y, mw);
+          p.text(getAuthorLabel(book!), 0, y, mw);
           y += 15;
 
           p.fill(90);
           p.textSize(10);
-          p.text("★ " + (book!.rating ?? "—") + " / 5", 0, y, mw);
+          p.text("★ " + (book!.averageRating ?? "—") + " / 5", 0, y, mw);
           y += 16;
 
           p.stroke(220);
@@ -348,7 +374,12 @@ export default function Display({ state }: { state: State }) {
                 p.fill(30);
                 p.textAlign(p.CENTER, p.BOTTOM);
                 p.textSize(10);
-                p.text(rec.mockBook.title, rec.x, rec.y - recNodeR - 6, 150);
+                p.text(
+                  rec.mockBook.title ?? "",
+                  rec.x,
+                  rec.y - recNodeR - 6,
+                  150,
+                );
                 p.fill(150);
                 p.textSize(8);
                 p.text("double-click to explore", rec.x, rec.y + recNodeR + 12);
@@ -409,9 +440,9 @@ export default function Display({ state }: { state: State }) {
   }, []);
 
   useEffect(() => {
-    const book = state.books[0];
+    const book = books[0];
     if (book) sketchRef.current?.setBook(book);
-  }, [state.books]);
+  }, [books]);
 
   return <div ref={containerRef} className="w-full h-full relative" />;
 }

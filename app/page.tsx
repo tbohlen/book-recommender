@@ -16,7 +16,7 @@ export default function Home() {
 
   return (
     <main className="bg-white dark:bg-black w-full h-full">
-      <Display state={state.books} />
+      <Display books={state.books} />
       <footer className="fixed bottom-0 left-0 w-full bg-stone-200 dark:bg-gray-800 p-4 flex justify-center">
         <form action={bookFormAction}>
           <Field orientation="horizontal" className="w-auto">

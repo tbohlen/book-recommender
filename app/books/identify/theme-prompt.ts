@@ -13,7 +13,7 @@ Not every field will be present. Work with whatever is given, and rely more heav
 
 ## Task
 
-Return no more than 8 themes total. Draw from a wide mix of theme types rather than clustering around one kind — aim to cover several of the following categories, not just genre:
+Return no more than 5 themes total. Draw from a wide mix of theme types rather than clustering around one kind — aim to cover several of the following categories, not just genre:
 
 - **Genre or form** (e.g. "hard science fiction", "epistolary novel", "noir mystery")
 - **Major locations or settings** (e.g. "1920s Paris", "the American Dust Bowl", "a generation ship")
