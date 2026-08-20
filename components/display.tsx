@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import type p5 from "p5";
 import { BookWithThemes } from "../app/books/identify/types";
-import { MOCK_REC_BOOKS } from "../lib/mock-data";
 
 /**
  * Picks the best available cover image URL from a Google Books `imageLinks`
@@ -28,12 +27,29 @@ function getAuthorLabel(book: BookWithThemes): string {
   return book.authors?.join(", ") ?? "";
 }
 
+/**
+ * Fetches book recommendations for a theme from the `/books/recs` API route.
+ *
+ * The route returns raw Google Books volume info (no themes, since it
+ * doesn't run theme extraction), so each result is normalized into a
+ * `BookWithThemes` with `themes` set to `null`.
+ */
+async function fetchRecommendations(theme: string): Promise<BookWithThemes[]> {
+  const res = await fetch(`/books/recs?theme=${encodeURIComponent(theme)}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch recommendations for "${theme}".`);
+  }
+  return await res.json();
+}
+
 interface ThemeNode {
   x: number;
   y: number;
   label: string;
   angle: number;
   expanded: boolean;
+  loading: boolean;
+  recBooks: BookWithThemes[] | null;
   recNodes: RecNode[];
 }
 
@@ -42,7 +58,7 @@ interface RecNode {
   y: number;
   label: string;
   angle: number;
-  mockBook: BookWithThemes;
+  book: BookWithThemes;
 }
 
 const CARD_W = 230;
@@ -67,7 +83,6 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
         let bookImg: p5.Image | "failed" | null = null;
         let themeNodes: ThemeNode[] = [];
         let isFlipped = false;
-        let mockBookIdx = 0;
 
         // ─── Layout ───────────────────────────────────────────────────────────────
         function getLayout() {
@@ -118,19 +133,23 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
               label,
               angle,
               expanded: false,
+              loading: false,
+              recBooks: null,
               recNodes: [],
             };
           });
         }
 
-        function buildRecNodes(theme: ThemeNode, recR: number): RecNode[] {
-          return Array.from({ length: 3 }, (_, i) => {
-            const spread = p.map(i, 0, 2, -0.5, 0.5);
+        function buildRecNodes(
+          theme: ThemeNode,
+          recR: number,
+          recBooks: BookWithThemes[],
+        ): RecNode[] {
+          const spreadMax = Math.max(recBooks.length - 1, 1);
+          return recBooks.map((book, i) => {
+            const spread = p.map(i, 0, spreadMax, -0.5, 0.5);
             const angle = theme.angle + spread;
-            const mockBook =
-              MOCK_REC_BOOKS[mockBookIdx % MOCK_REC_BOOKS.length];
-            mockBookIdx++;
-            const words = (mockBook.title ?? "").split(" ");
+            const words = (book.title ?? "").split(" ");
             const label = (words[0] === "The" ? words[1] : words[0]).substring(
               0,
               7,
@@ -140,9 +159,46 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
               y: theme.y + recR * p.sin(angle),
               label,
               angle,
-              mockBook,
+              book,
             };
           });
+        }
+
+        /**
+         * Expands or collapses a theme node's recommendations. On first
+         * expansion, fetches recommendations from the `/books/recs` route
+         * and caches them on the node so later toggles don't re-fetch.
+         */
+        function toggleTheme(theme: ThemeNode, recR: number) {
+          if (theme.expanded) {
+            theme.expanded = false;
+            theme.recNodes = [];
+            return;
+          }
+
+          theme.expanded = true;
+
+          if (theme.recBooks) {
+            theme.recNodes = buildRecNodes(theme, recR, theme.recBooks);
+            return;
+          }
+
+          theme.loading = true;
+          fetchRecommendations(theme.label)
+            .then((recBooks) => {
+              theme.recBooks = recBooks;
+              theme.loading = false;
+              if (theme.expanded) {
+                theme.recNodes = buildRecNodes(theme, recR, recBooks);
+              }
+            })
+            .catch((error) => {
+              console.error(
+                `Error fetching recommendations for "${theme.label}":`,
+                error,
+              );
+              theme.loading = false;
+            });
         }
 
         // ─── Setup ────────────────────────────────────────────────────────────────
@@ -344,6 +400,13 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
             p.textSize(11);
             p.textStyle(p.NORMAL);
             p.text(n.label, n.x, n.y - themeR - 6);
+
+            if (n.loading) {
+              p.fill(150);
+              p.textAlign(p.CENTER, p.TOP);
+              p.textSize(8);
+              p.text("loading...", n.x, n.y + themeR + 6);
+            }
           }
         }
 
@@ -375,7 +438,7 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
                 p.textAlign(p.CENTER, p.BOTTOM);
                 p.textSize(10);
                 p.text(
-                  rec.mockBook.title ?? "",
+                  rec.book.title ?? "",
                   rec.x,
                   rec.y - recNodeR - 6,
                   150,
@@ -410,9 +473,7 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
 
           for (const n of themeNodes) {
             if (p.dist(p.mouseX, p.mouseY, n.x, n.y) < themeR) {
-              n.expanded = !n.expanded;
-              if (n.expanded) n.recNodes = buildRecNodes(n, recR);
-              else n.recNodes = [];
+              toggleTheme(n, recR);
               return;
             }
           }
@@ -425,7 +486,7 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
             if (!theme.expanded) continue;
             for (const rec of theme.recNodes) {
               if (p.dist(p.mouseX, p.mouseY, rec.x, rec.y) < recNodeR) {
-                setBook(rec.mockBook);
+                setBook(rec.book);
               }
             }
           }
