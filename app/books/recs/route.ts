@@ -4,7 +4,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { NextResponse } from "next/server";
 import recPrompt from "./rec-prompt";
 import { recSchema, RecommendedBookQuery } from "./types";
-import { GoogleBook } from "../identify/types";
+import { IdentifiedBook } from "../identify/types";
 import { extractThemes } from "../../themes/extractThemes";
 
 const booksApi = books("v1");
@@ -109,12 +109,12 @@ async function getRecommendations(
  */
 async function normalizeRecommendations(
   recommendations: RecommendedBookQuery[],
-): Promise<GoogleBook[]> {
+): Promise<IdentifiedBook[]> {
   const results = await Promise.all(
     recommendations.map((recommendation) => findFirstMatch(recommendation)),
   );
 
-  return results.filter((book): book is GoogleBook => book !== null);
+  return results.filter((book): book is IdentifiedBook => book !== null);
 }
 
 /**
@@ -122,19 +122,21 @@ async function normalizeRecommendations(
  * the top match, if any.
  *
  * @param recommendation - The book to search for, by title and author.
- * @returns The first matching book's volume info, or `null` if the search
- *   failed or found no results.
+ * @returns The first matching book's volume info plus its id, or `null` if
+ *   the search failed or found no results.
  */
 async function findFirstMatch(
   recommendation: RecommendedBookQuery,
-): Promise<GoogleBook | null> {
+): Promise<IdentifiedBook | null> {
   try {
     const res = await booksApi.volumes.list({
       q: `intitle:${recommendation.title} inauthor:${recommendation.author}`,
       key: process.env.GOOGLE_API_KEY,
     });
 
-    return res.data.items?.[0]?.volumeInfo ?? null;
+    const item = res.data.items?.[0];
+    if (!item?.volumeInfo || !item.id) return null;
+    return { ...item.volumeInfo, id: item.id };
   } catch (error) {
     console.error(
       `Error fetching "${recommendation.title}" from Google Books API:`,

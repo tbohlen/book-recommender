@@ -1,5 +1,5 @@
 "use server";
-import { IdentifyBookState, GoogleBook, BookWithThemes } from "./types";
+import { IdentifyBookState, IdentifiedBook, BookWithThemes } from "./types";
 import { books } from "@googleapis/books";
 import { extractThemes } from "../../themes/extractThemes";
 
@@ -30,22 +30,22 @@ export default async function identifyBook(
 
   // validator?
 
-  let firstBook: GoogleBook;
+  let firstBook: IdentifiedBook;
   try {
     const res = await booksApi.volumes.list({
       q: search,
       key: process.env.GOOGLE_API_KEY,
     });
-    const items = res.data.items;
+    const item = res.data.items?.[0];
 
-    if (!items?.[0]?.volumeInfo) {
+    if (!item?.volumeInfo || !item.id) {
       return {
         status: "error",
         books: prevState.books,
         errorMessage: "No matching books found.",
       };
     }
-    firstBook = items[0].volumeInfo;
+    firstBook = { ...item.volumeInfo, id: item.id };
   } catch (error) {
     console.error("Error fetching from Google Books API:", error);
     return {

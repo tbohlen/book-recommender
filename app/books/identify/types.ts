@@ -3,7 +3,16 @@ import { z } from "zod";
 
 export type GoogleBook = NonNullable<books_v1.Schema$Volume["volumeInfo"]>;
 
-export interface BookWithThemes extends GoogleBook {
+/**
+ * A `GoogleBook` plus the stable Google Books volume id (`Schema$Volume.id`,
+ * which lives alongside `volumeInfo` rather than inside it). This id is what
+ * lets app state key/dedupe books by identity instead of by object reference.
+ */
+export interface IdentifiedBook extends GoogleBook {
+  id: string;
+}
+
+export interface BookWithThemes extends IdentifiedBook {
   themes: string[] | null;
 }
 
@@ -22,6 +31,7 @@ export interface BookWithThemes extends GoogleBook {
  * from automatically.
  */
 export const bookWithThemesSchema = z.looseObject({
+  id: z.string(),
   title: z.string().optional(),
   authors: z.array(z.string()).optional(),
   description: z.string().optional(),
