@@ -4,6 +4,17 @@ import { useEffect, useRef } from "react";
 import type p5 from "p5";
 import { BookWithThemes } from "../app/books/identify/types";
 
+/** The callback-shaped props, cached in a ref so the p5 sketch (built once
+ * on mount) always calls the latest version rather than a stale closure. */
+interface DisplayCallbacks {
+  savedBooks: BookWithThemes[];
+  selectedBooks: BookWithThemes[];
+  handleCenterBook: (book: BookWithThemes) => void;
+  handleSaveBook: (book: BookWithThemes) => void;
+  handleSelectBook: (book: BookWithThemes) => void;
+  onFetchRecommendations: (theme: string) => Promise<BookWithThemes[]>;
+}
+
 /**
  * Picks the best available cover image URL from a Google Books `imageLinks`
  * object, preferring higher-resolution links when present.
@@ -25,21 +36,6 @@ function getCoverImageUrl(book: BookWithThemes): string | null {
 /** Joins a Google Books `authors` list into a single display string. */
 function getAuthorLabel(book: BookWithThemes): string {
   return book.authors?.join(", ") ?? "";
-}
-
-/**
- * Fetches book recommendations for a theme from the `/books/recs` API route.
- *
- * The route returns raw Google Books volume info (no themes, since it
- * doesn't run theme extraction), so each result is normalized into a
- * `BookWithThemes` with `themes` set to `null`.
- */
-async function fetchRecommendations(theme: string): Promise<BookWithThemes[]> {
-  const res = await fetch(`/books/recs?theme=${encodeURIComponent(theme)}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch recommendations for "${theme}".`);
-  }
-  return await res.json();
 }
 
 interface ThemeNode {
@@ -64,11 +60,47 @@ interface RecNode {
 const CARD_W = 230;
 const CARD_H = 230;
 
-export default function Display({ books }: { books: BookWithThemes[] }) {
+export default function Display({
+  savedBooks,
+  // Not yet read here — the graph currently re-fetches a theme's
+  // recommendations live via `onFetchRecommendations` rather than
+  // re-hydrating from this list. Plumbed through for a future pass.
+  recommendedBooks: _recommendedBooks,
+  selectedBooks,
+  centeredBook,
+  handleCenterBook,
+  handleSaveBook,
+  handleSelectBook,
+  onFetchRecommendations,
+}: DisplayCallbacks & {
+  recommendedBooks: BookWithThemes[];
+  centeredBook: BookWithThemes | null;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sketchRef = useRef<{ setBook: (b: BookWithThemes) => void } | null>(
     null,
   );
+
+  // Kept fresh every render so the p5 sketch below — built once on mount —
+  // always reads the latest callback props instead of capturing stale ones.
+  const propsRef = useRef<DisplayCallbacks>({
+    savedBooks,
+    selectedBooks,
+    handleCenterBook,
+    handleSaveBook,
+    handleSelectBook,
+    onFetchRecommendations,
+  });
+  useEffect(() => {
+    propsRef.current = {
+      savedBooks,
+      selectedBooks,
+      handleCenterBook,
+      handleSaveBook,
+      handleSelectBook,
+      onFetchRecommendations,
+    };
+  });
 
   useEffect(() => {
     let instance: p5 | null = null;
@@ -184,7 +216,8 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
           }
 
           theme.loading = true;
-          fetchRecommendations(theme.label)
+          propsRef.current
+            .onFetchRecommendations(theme.label)
             .then((recBooks) => {
               theme.recBooks = recBooks;
               theme.loading = false;
@@ -362,12 +395,22 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
 
           p.pop();
 
-          p.fill(180);
+          const isSelected = propsRef.current.selectedBooks.some(
+            (b) => b.id === book!.id,
+          );
+          p.fill(isSelected ? "#16a34a" : "#b4b4b4");
           p.textAlign(p.CENTER, p.TOP);
           p.textSize(8);
           p.textStyle(p.NORMAL);
           p.noStroke();
-          p.text("click to flip back", cx, cy + CARD_H / 2 + 6);
+          p.text(
+            (isSelected ? "★ selected — " : "") +
+              "click to flip back, double-click to " +
+              (isSelected ? "deselect" : "select"),
+            cx,
+            cy + CARD_H / 2 + 6,
+            CARD_W,
+          );
         }
 
         function estimateTextH(str: string, sz: number, mw: number): number {
@@ -412,16 +455,22 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
 
         // ─── Rec nodes ────────────────────────────────────────────────────────────
         function drawRecNodes({ recNodeR }: ReturnType<typeof getLayout>) {
+          const savedIds = new Set(
+            propsRef.current.savedBooks.map((b) => b.id),
+          );
+
           for (const theme of themeNodes) {
             if (!theme.expanded) continue;
             for (const rec of theme.recNodes) {
+              const isSaved = savedIds.has(rec.book.id);
+
               p.stroke(200);
               p.strokeWeight(1);
               p.line(theme.x, theme.y, rec.x, rec.y);
 
               const hovered =
                 p.dist(p.mouseX, p.mouseY, rec.x, rec.y) < recNodeR;
-              p.fill(hovered ? "#f59e0b" : "#fde68a");
+              p.fill(isSaved ? "#86efac" : hovered ? "#f59e0b" : "#fde68a");
               p.stroke(255);
               p.strokeWeight(1);
               p.ellipse(rec.x, rec.y, recNodeR * 2, recNodeR * 2);
@@ -437,15 +486,16 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
                 p.fill(30);
                 p.textAlign(p.CENTER, p.BOTTOM);
                 p.textSize(10);
-                p.text(
-                  rec.book.title ?? "",
-                  rec.x,
-                  rec.y - recNodeR - 6,
-                  150,
-                );
+                p.text(rec.book.title ?? "", rec.x, rec.y - recNodeR - 6, 150);
                 p.fill(150);
                 p.textSize(8);
-                p.text("double-click to explore", rec.x, rec.y + recNodeR + 12);
+                p.text(
+                  isSaved
+                    ? "double-click to explore"
+                    : "click to save · double-click to explore",
+                  rec.x,
+                  rec.y + recNodeR + 12,
+                );
               }
             }
           }
@@ -459,7 +509,10 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
           for (const theme of themeNodes) {
             if (!theme.expanded) continue;
             for (const rec of theme.recNodes) {
-              if (p.dist(p.mouseX, p.mouseY, rec.x, rec.y) < recNodeR) return;
+              if (p.dist(p.mouseX, p.mouseY, rec.x, rec.y) < recNodeR) {
+                propsRef.current.handleSaveBook(rec.book);
+                return;
+              }
             }
           }
 
@@ -481,14 +534,23 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
 
         p.doubleClicked = () => {
           if (!book) return;
-          const { recNodeR } = getLayout();
+          const { bx, cardCY, recNodeR } = getLayout();
+
           for (const theme of themeNodes) {
             if (!theme.expanded) continue;
             for (const rec of theme.recNodes) {
               if (p.dist(p.mouseX, p.mouseY, rec.x, rec.y) < recNodeR) {
-                setBook(rec.book);
+                propsRef.current.handleCenterBook(rec.book);
+                return;
               }
             }
+          }
+
+          if (
+            p.abs(p.mouseX - bx) < CARD_W / 2 &&
+            p.abs(p.mouseY - cardCY) < CARD_H / 2
+          ) {
+            propsRef.current.handleSelectBook(book);
           }
         };
       }, containerRef.current);
@@ -501,9 +563,8 @@ export default function Display({ books }: { books: BookWithThemes[] }) {
   }, []);
 
   useEffect(() => {
-    const book = books[0];
-    if (book) sketchRef.current?.setBook(book);
-  }, [books]);
+    if (centeredBook) sketchRef.current?.setBook(centeredBook);
+  }, [centeredBook]);
 
   return <div ref={containerRef} className="w-full h-full relative" />;
 }
