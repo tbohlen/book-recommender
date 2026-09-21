@@ -32,6 +32,11 @@ export function useLibrary() {
       dispatch({ type: "SAVE_BOOK", bookId: book.id }),
     [dispatch],
   );
+  const handleUnsaveBook = useCallback(
+    (book: BookWithThemes) =>
+      dispatch({ type: "UNSAVE_BOOK", bookId: book.id }),
+    [dispatch],
+  );
   const handleSelectBook = useCallback(
     (book: BookWithThemes) =>
       dispatch({ type: "TOGGLE_SELECTED", bookId: book.id }),
@@ -51,6 +56,7 @@ export function useLibrary() {
     handleAddSavedBook,
     handleAddRecommendedBooks,
     handleSaveBook,
+    handleUnsaveBook,
     handleSelectBook,
     handleCenterBook,
   };

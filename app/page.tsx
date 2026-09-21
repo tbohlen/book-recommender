@@ -68,6 +68,7 @@ export default function Home() {
     savedBooks,
     selectedBooks,
     handleAddSavedBook,
+    handleUnsaveBook,
     handleAddRecommendedBooks,
     handleSelectBook,
   } = useLibrary();
@@ -158,6 +159,7 @@ export default function Home() {
         selectionMode={selectionMode}
         sharedThemes={sharedThemes}
         handleSaveBook={handleAddSavedBook}
+        handleUnsaveBook={handleUnsaveBook}
         handleSelectBook={handleSelectBook}
         onFetchRecommendations={onFetchRecommendations}
       />
