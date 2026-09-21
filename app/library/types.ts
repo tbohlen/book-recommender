@@ -1,14 +1,19 @@
 import { BookWithThemes } from "@/app/books/identify/types";
 
 /**
- * A single book's status within the user's library: whether it has been
- * explicitly saved (via search or a "save" click on a recommendation) or is
- * merely a recommendation the user has discovered but not yet saved, plus
- * whether it's currently selected as AI chat context.
+ * A single book's status within the user's library. `saved` and
+ * `recommended` are independent: `saved` tracks whether the user has
+ * explicitly kept the book (via search or a "save" click on a
+ * recommendation), while `recommended` is provenance — whether the system
+ * ever surfaced this book as a recommendation. Keeping them separate means
+ * unsaving a book the user found via search (never recommended) doesn't
+ * mislabel it as a recommendation. `selected` tracks whether it's currently
+ * selected as AI chat context.
  */
 export interface BookEntity {
   book: BookWithThemes;
-  status: "saved" | "recommended";
+  saved: boolean;
+  recommended: boolean;
   selected: boolean;
 }
 
