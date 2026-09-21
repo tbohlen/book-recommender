@@ -41,8 +41,3 @@ export const bookWithThemesSchema = z.looseObject({
   themes: z.array(z.string()).nullable(),
 });
 
-export interface IdentifyBookState {
-  status: "idle" | "success" | "error";
-  books: BookWithThemes[];
-  errorMessage: string | null;
-}
