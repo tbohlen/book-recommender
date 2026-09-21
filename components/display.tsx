@@ -12,6 +12,7 @@ interface DisplayCallbacks {
   selectionMode: boolean;
   sharedThemes: string[];
   handleSaveBook: (book: BookWithThemes) => void;
+  handleUnsaveBook: (book: BookWithThemes) => void;
   handleSelectBook: (book: BookWithThemes) => void;
   onFetchRecommendations: (theme: string) => Promise<BookWithThemes[]>;
 }
@@ -73,6 +74,7 @@ export default function Display({
   selectionMode,
   sharedThemes,
   handleSaveBook,
+  handleUnsaveBook,
   handleSelectBook,
   onFetchRecommendations,
 }: DisplayCallbacks) {
@@ -89,6 +91,7 @@ export default function Display({
     selectionMode,
     sharedThemes,
     handleSaveBook,
+    handleUnsaveBook,
     handleSelectBook,
     onFetchRecommendations,
   });
@@ -99,6 +102,7 @@ export default function Display({
       selectionMode,
       sharedThemes,
       handleSaveBook,
+      handleUnsaveBook,
       handleSelectBook,
       onFetchRecommendations,
     };

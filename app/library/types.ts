@@ -26,5 +26,6 @@ export type LibraryAction =
   | { type: "ADD_SAVED_BOOK"; book: BookWithThemes }
   | { type: "ADD_RECOMMENDED_BOOKS"; books: BookWithThemes[] }
   | { type: "SAVE_BOOK"; bookId: string }
+  | { type: "UNSAVE_BOOK"; bookId: string }
   | { type: "TOGGLE_SELECTED"; bookId: string }
   | { type: "SET_CENTERED"; bookId: string };

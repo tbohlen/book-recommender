@@ -39,6 +39,12 @@ export function libraryReducer(
         status: "saved",
       }));
 
+    case "UNSAVE_BOOK":
+      return updateEntity(state, action.bookId, (entity) => ({
+        ...entity,
+        status: "recommended",
+      }));
+
     case "TOGGLE_SELECTED":
       return updateEntity(state, action.bookId, (entity) => ({
         ...entity,
