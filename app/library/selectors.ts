@@ -3,13 +3,13 @@ import { BookWithThemes } from "@/app/books/identify/types";
 
 export function selectSavedBooks(state: LibraryState): BookWithThemes[] {
   return Object.values(state.entities)
-    .filter((entity) => entity.status === "saved")
+    .filter((entity) => entity.saved)
     .map((entity) => entity.book);
 }
 
 export function selectRecommendedBooks(state: LibraryState): BookWithThemes[] {
   return Object.values(state.entities)
-    .filter((entity) => entity.status === "recommended")
+    .filter((entity) => entity.recommended)
     .map((entity) => entity.book);
 }
 
