@@ -6,194 +6,26 @@
 
 **Architecture:** A persistent search bar sits at the top of the page. Submitting it opens a `Dialog` anchored just below the bar (the bar stays above the dialog's overlay via z-index, so the query stays visible/editable). Editing the query while the dialog is open triggers a debounced, abortable re-search against a new `/books/search` route (raw Google Books data, no theme extraction). Each result has its own Save button; saving calls a new `selectBook` server action that runs Claude theme-extraction for just that one book, then adds it to the library.
 
-**Tech Stack:** Next.js App Router, React 19, TypeScript (strict), shadcn/ui (`base-vega` style, `@base-ui/react` primitives), Tailwind v4, Vitest + React Testing Library (new — this repo has no test suite yet).
+**Tech Stack:** Next.js App Router, React 19, TypeScript (strict), shadcn/ui (`base-vega` style, `@base-ui/react` primitives), Tailwind v4.
 
 **Spec:** `docs/superpowers/specs/2026-09-20-book-search-results-picker-design.md`
 
 ---
 
-## Testing approach for this plan
+## Verification approach for this plan
 
-This repo has no test framework configured yet (`package.json` has no test script; confirmed via `find . -iname "*.test.*"` returning nothing). Task 1 sets up Vitest + React Testing Library — a lightweight, fast, Vite-native stack that needs no Babel config and plays well with React 19 — scoped to unit/integration coverage of the new code in this feature (the search route, the save action, the debounce/abort hook, and the new components). This plan does **not** add end-to-end/Playwright infrastructure or attempt to backfill tests for pre-existing code — that's a larger, separate initiative outside this feature's scope. The one page-level composition task (Task 10) is verified by type-check/lint/build plus a manual browser walkthrough instead of an automated test, since RTL-testing `page.tsx` would require heavily mocking the browser-only, dynamically-imported p5 sketch in `Display` for no real return in confidence.
-
----
-
-### Task 1: Set up Vitest + React Testing Library
-
-**Files:**
-- Modify: `package.json`
-- Create: `vitest.config.ts`
-- Create: `vitest.setup.ts`
-- Create: `lib/utils.test.ts`
-
-- [ ] **Step 1: Install test dependencies**
-
-Run:
-```bash
-npm install -D vitest @vitejs/plugin-react vite-tsconfig-paths jsdom @testing-library/react @testing-library/jest-dom @testing-library/user-event
-```
-Expected: `package.json`'s `devDependencies` gains these six packages; `package-lock.json` updates.
-
-- [ ] **Step 2: Add test scripts**
-
-Modify `package.json`'s `"scripts"` block:
-```json
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
-```
-
-- [ ] **Step 3: Create the Vitest config**
-
-Create `vitest.config.ts`:
-```ts
-import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
-import tsconfigPaths from "vite-tsconfig-paths";
-
-export default defineConfig({
-  plugins: [tsconfigPaths(), react()],
-  test: {
-    environment: "jsdom",
-    setupFiles: ["./vitest.setup.ts"],
-  },
-});
-```
-
-- [ ] **Step 4: Create the setup file**
-
-Create `vitest.setup.ts`:
-```ts
-import "@testing-library/jest-dom/vitest";
-```
-
-- [ ] **Step 5: Write a smoke test to verify the harness works**
-
-> `cn()` (`lib/utils.ts`) is a pure function — a good, real (not throwaway) first test that proves Vitest, TypeScript, and the `@/*` path alias are all wired correctly.
-
-Create `lib/utils.test.ts`:
-```ts
-import { describe, it, expect } from "vitest";
-import { cn } from "@/lib/utils";
-
-describe("cn", () => {
-  it("merges class names and drops falsy values", () => {
-    expect(cn("a", false && "b", "c")).toBe("a c");
-  });
-
-  it("lets a later conflicting Tailwind class win", () => {
-    expect(cn("px-2", "px-4")).toBe("px-4");
-  });
-});
-```
-
-- [ ] **Step 6: Run it and verify it passes**
-
-Run: `npm run test`
-Expected: `lib/utils.test.ts (2 tests)` passes, 0 failures.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add package.json package-lock.json vitest.config.ts vitest.setup.ts lib/utils.test.ts
-git commit -m "test: set up Vitest and React Testing Library"
-```
+This repo has no automated test framework, and the team wants to keep this build simple — no test infrastructure is being introduced for this feature. Instead, each task is verified with quick, concrete checks anyone can run without special tooling: TypeScript's `tsc --noEmit` (catches wiring/type mistakes immediately), `curl` against the dev server for the one plain HTTP endpoint, and — for the feature as a whole, once everything is wired together in Task 9 — a manual click-through in the browser. This mirrors how the rest of this codebase is verified today.
 
 ---
 
-### Task 2: `/books/search` API route
+### Task 1: `/books/search` API route
 
 **Files:**
 - Create: `app/books/search/route.ts`
-- Test: `app/books/search/route.test.ts`
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the route**
 
-> The route calls the Google Books client instantiated at module scope, so we mock `@googleapis/books` with a shared `listMock` we control per test, matching the existing pattern in `app/books/recs/route.ts`. `// @vitest-environment node` is set because this is server code, not DOM code.
-
-Create `app/books/search/route.test.ts`:
-```ts
-// @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-const listMock = vi.fn();
-vi.mock("@googleapis/books", () => ({
-  books: () => ({ volumes: { list: (...args: unknown[]) => listMock(...args) } }),
-}));
-
-import { GET } from "./route";
-
-describe("GET /books/search", () => {
-  beforeEach(() => {
-    listMock.mockReset();
-    process.env.GOOGLE_API_KEY = "test-key";
-  });
-
-  it("returns 400 when q is missing", async () => {
-    const req = new Request("http://localhost/books/search");
-    const res = await GET(req);
-    expect(res.status).toBe(400);
-  });
-
-  it("returns identified books on success, capped at 10 via maxResults", async () => {
-    listMock.mockResolvedValue({
-      data: {
-        items: [
-          { id: "1", volumeInfo: { title: "Book One" } },
-          { id: "2", volumeInfo: { title: "Book Two" } },
-        ],
-      },
-    });
-    const req = new Request("http://localhost/books/search?q=test");
-    const res = await GET(req);
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body).toEqual([
-      { id: "1", title: "Book One" },
-      { id: "2", title: "Book Two" },
-    ]);
-    expect(listMock).toHaveBeenCalledWith(
-      expect.objectContaining({ q: "test", maxResults: 10 }),
-    );
-  });
-
-  it("filters out items missing volumeInfo or id", async () => {
-    listMock.mockResolvedValue({
-      data: {
-        items: [
-          { id: "1", volumeInfo: { title: "Ok" } },
-          { volumeInfo: { title: "No id" } },
-          { id: "3" },
-        ],
-      },
-    });
-    const req = new Request("http://localhost/books/search?q=test");
-    const res = await GET(req);
-    const body = await res.json();
-    expect(body).toEqual([{ id: "1", title: "Ok" }]);
-  });
-
-  it("returns 502 when the Google Books API throws", async () => {
-    listMock.mockRejectedValue(new Error("boom"));
-    const req = new Request("http://localhost/books/search?q=test");
-    const res = await GET(req);
-    expect(res.status).toBe(502);
-  });
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `npx vitest run app/books/search/route.test.ts`
-Expected: FAIL — `Cannot find module './route'` (file doesn't exist yet).
-
-- [ ] **Step 3: Write the route implementation**
+> Mirrors the existing pattern in `app/books/recs/route.ts` (same `books("v1")` client, same try/catch-around-the-API-call shape), but returns a list of up to 10 raw results instead of resolving one AI recommendation. No theme extraction here — that's deferred to `selectBook` (Task 2), which only runs for the one book the user actually picks.
 
 Create `app/books/search/route.ts`:
 ```ts
@@ -248,77 +80,40 @@ export async function GET(req: Request) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `npx vitest run app/books/search/route.test.ts`
-Expected: PASS (4 tests).
-
-- [ ] **Step 5: Type-check**
+- [ ] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 3: Verify it works against the real API**
+
+Run (in one terminal): `npm run dev`
+
+In another terminal:
+```bash
+curl "http://localhost:3000/books/search?q=dune"
+curl "http://localhost:3000/books/search"
+```
+Expected: the first command returns a JSON array of up to 10 books (each with `id`, `title`, etc.); the second returns `{"error":"Missing required 'q' query parameter."}` with a 400 status (add `-i` to `curl` to see the status code). Requires `GOOGLE_API_KEY` set in `.env.local` (see `.env.local.example`).
+
+- [ ] **Step 4: Commit**
 
 ```bash
-git add app/books/search/route.ts app/books/search/route.test.ts
+git add app/books/search/route.ts
 git commit -m "feat: add /books/search route for raw Google Books results"
 ```
 
 ---
 
-### Task 3: `selectBook` action; retire `identifyBook`
+### Task 2: `selectBook` action; retire `identifyBook`
 
 **Files:**
 - Modify: `app/books/identify/actions.ts`
 - Modify: `app/books/identify/types.ts`
-- Test: `app/books/identify/actions.test.ts`
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Replace `identifyBook` with `selectBook`**
 
-> `selectBook` only calls `extractThemes` (no Google Books call — the caller already has full `volumeInfo` from `/books/search`). It throws on failure rather than swallowing the error, so the caller (`BookSearchResultItem`, built in Task 6) can show a per-row retryable error state.
-
-Create `app/books/identify/actions.test.ts`:
-```ts
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-const extractThemesMock = vi.fn();
-vi.mock("../../themes/extractThemes", () => ({
-  extractThemes: (...args: unknown[]) => extractThemesMock(...args),
-}));
-
-import { selectBook } from "./actions";
-import { IdentifiedBook } from "./types";
-
-describe("selectBook", () => {
-  const book: IdentifiedBook = { id: "1", title: "Dune", authors: ["Frank Herbert"] };
-
-  beforeEach(() => {
-    extractThemesMock.mockReset();
-  });
-
-  it("returns the book with extracted themes attached", async () => {
-    extractThemesMock.mockResolvedValue(["Power", "Destiny"]);
-    const result = await selectBook(book);
-    expect(result).toEqual({ ...book, themes: ["Power", "Destiny"] });
-    expect(extractThemesMock).toHaveBeenCalledWith(book);
-  });
-
-  it("propagates errors from theme extraction", async () => {
-    extractThemesMock.mockRejectedValue(new Error("Claude is down"));
-    await expect(selectBook(book)).rejects.toThrow("Claude is down");
-  });
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `npx vitest run app/books/identify/actions.test.ts`
-Expected: FAIL — `selectBook` is not exported (old file only exports `identifyBook` as default).
-
-- [ ] **Step 3: Replace `identifyBook` with `selectBook`**
-
-> The old free-text-search-and-guess flow is fully retired in favor of `BookSearch` (built in later tasks), so `identifyBook` and the Google Books client it owned are removed rather than kept alongside the new action.
+> The old free-text-search-and-guess flow is fully retired in favor of `BookSearch` (built in later tasks), so `identifyBook` and the Google Books client it owned are removed rather than kept alongside the new action. `selectBook` only runs Claude's theme extraction — no Google Books call — since the caller already has full book data from `/books/search`. It throws on failure (rather than returning an error object) so the caller can catch it and show a per-row retryable error state.
 
 Replace the entire contents of `app/books/identify/actions.ts`:
 ```ts
@@ -345,7 +140,7 @@ export async function selectBook(
 }
 ```
 
-- [ ] **Step 4: Remove the now-unused `IdentifyBookState` type**
+- [ ] **Step 2: Remove the now-unused `IdentifyBookState` type**
 
 In `app/books/identify/types.ts`, delete this block (it was only used by the removed `useActionState` wiring):
 ```ts
@@ -356,141 +151,28 @@ export interface IdentifyBookState {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
-
-Run: `npx vitest run app/books/identify/actions.test.ts`
-Expected: PASS (2 tests).
-
-- [ ] **Step 6: Type-check**
+- [ ] **Step 3: Type-check**
 
 Run: `npx tsc --noEmit`
-Expected: errors in `app/page.tsx` (it still imports `identifyBook`/`IdentifyBookState`) — this is expected and gets fixed in Task 10. Confirm there are no *other* errors.
+Expected: errors in `app/page.tsx` (it still imports `identifyBook`/`IdentifyBookState`) — this is expected and gets fixed in Task 9. Confirm there are no *other* errors.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add app/books/identify/actions.ts app/books/identify/types.ts app/books/identify/actions.test.ts
+git add app/books/identify/actions.ts app/books/identify/types.ts
 git commit -m "refactor: replace identifyBook with selectBook action"
 ```
 
 ---
 
-### Task 4: `useBookSearch` hook
+### Task 3: `useBookSearch` hook
 
 **Files:**
 - Create: `hooks/useBookSearch.ts`
-- Test: `hooks/useBookSearch.test.ts`
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the hook**
 
-> This hook is the trickiest logic in the feature: debounce, a minimum query length, skipping a no-op re-search, and — per the design spec — aborting any in-flight request on *every* keystroke (not just when the next debounced search actually fires), so a request already sent before the latest edit can never resolve late and overwrite fresher results. Each behavior gets its own test rather than one big one, so a failure points at exactly which rule broke.
-
-Create `hooks/useBookSearch.test.ts`:
-```ts
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act, waitFor } from "@testing-library/react";
-import { useBookSearch } from "./useBookSearch";
-
-function mockFetchOk(body: unknown) {
-  return vi.fn(() =>
-    Promise.resolve({ ok: true, json: () => Promise.resolve(body) }),
-  );
-}
-
-describe("useBookSearch", () => {
-  beforeEach(() => {
-    vi.stubGlobal("fetch", mockFetchOk([{ id: "1", title: "Book" }]));
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.useRealTimers();
-  });
-
-  it("does not search below the minimum query length", () => {
-    vi.useFakeTimers();
-    const { result } = renderHook(() => useBookSearch());
-    act(() => result.current.search("ab"));
-    act(() => vi.advanceTimersByTime(500));
-    expect(fetch).not.toHaveBeenCalled();
-    expect(result.current.status).toBe("idle");
-  });
-
-  it("debounces rapid edits into a single request for the latest query", () => {
-    vi.useFakeTimers();
-    const { result } = renderHook(() => useBookSearch());
-    act(() => result.current.search("harry"));
-    act(() => vi.advanceTimersByTime(200));
-    act(() => result.current.search("harry p"));
-    act(() => vi.advanceTimersByTime(400));
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining(encodeURIComponent("harry p")),
-      expect.anything(),
-    );
-  });
-
-  it("fires immediately on searchImmediate, bypassing the debounce", () => {
-    const { result } = renderHook(() => useBookSearch());
-    act(() => result.current.searchImmediate("dune"));
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("skips a debounced search if the query is unchanged from the last one sent", () => {
-    vi.useFakeTimers();
-    const { result } = renderHook(() => useBookSearch());
-    act(() => result.current.searchImmediate("dune"));
-    expect(fetch).toHaveBeenCalledTimes(1);
-    act(() => result.current.search("dune"));
-    act(() => vi.advanceTimersByTime(400));
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("aborts an in-flight request as soon as the user edits again", () => {
-    const { result } = renderHook(() => useBookSearch());
-    act(() => result.current.searchImmediate("dune"));
-    const firstCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    const firstSignal = (firstCall[1] as RequestInit).signal as AbortSignal;
-    expect(firstSignal.aborted).toBe(false);
-
-    act(() => result.current.search("dune messiah"));
-    expect(firstSignal.aborted).toBe(true);
-  });
-
-  it("cancel aborts and clears any pending debounced search", () => {
-    vi.useFakeTimers();
-    const { result } = renderHook(() => useBookSearch());
-    act(() => result.current.search("dune"));
-    act(() => result.current.cancel());
-    act(() => vi.advanceTimersByTime(500));
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it("sets results and status success on a successful search", async () => {
-    const { result } = renderHook(() => useBookSearch());
-    act(() => result.current.searchImmediate("dune"));
-    await waitFor(() => expect(result.current.status).toBe("success"));
-    expect(result.current.results).toEqual([{ id: "1", title: "Book" }]);
-  });
-
-  it("sets status error when the request fails", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false })));
-    const { result } = renderHook(() => useBookSearch());
-    act(() => result.current.searchImmediate("dune"));
-    await waitFor(() => expect(result.current.status).toBe("error"));
-    expect(result.current.errorMessage).toBeTruthy();
-  });
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `npx vitest run hooks/useBookSearch.test.ts`
-Expected: FAIL — `Cannot find module './useBookSearch'`.
-
-- [ ] **Step 3: Write the hook implementation**
-
-> `search` (debounced) and `searchImmediate` (submit) share `runSearch`. Both abort any in-flight request up front — that's what guarantees a stale response can never win. `search` additionally debounces via a ref-held timeout and applies the min-length/unchanged-query skip rules; `searchImmediate` applies only the min-length check, since a deliberate submit should always run.
+> `search` (debounced, called on every keystroke while the results dialog is open) and `searchImmediate` (called on submit) share `runSearch`. Both abort any in-flight request up front — that's what guarantees a stale response from an earlier keystroke can never overwrite a fresher one. `search` additionally debounces via a ref-held timeout and skips firing if the query is too short or unchanged from the last one actually sent; `searchImmediate` only checks the length, since a deliberate submit should always run. See the design spec's "Search-trigger rules" for the full reasoning.
 
 Create `hooks/useBookSearch.ts`:
 ```ts
@@ -613,26 +295,21 @@ export function useBookSearch(): UseBookSearchReturn {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `npx vitest run hooks/useBookSearch.test.ts`
-Expected: PASS (8 tests).
-
-- [ ] **Step 5: Type-check**
+- [ ] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit`
-Expected: same pre-existing `app/page.tsx` errors as Task 3 (fixed in Task 10), no new errors.
+Expected: same pre-existing `app/page.tsx` errors as Task 2, no new errors. This hook will be exercised end-to-end by the manual browser walkthrough in Task 9.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add hooks/useBookSearch.ts hooks/useBookSearch.test.ts
+git add hooks/useBookSearch.ts
 git commit -m "feat: add useBookSearch debounced search hook"
 ```
 
 ---
 
-### Task 5: Add the shadcn `dialog` component
+### Task 4: Add the shadcn `dialog` component
 
 **Files:**
 - Create: `components/ui/dialog.tsx` (generated by shadcn CLI)
@@ -643,12 +320,12 @@ Run:
 ```bash
 npx shadcn@latest add dialog --yes
 ```
-Expected: `components/ui/dialog.tsx` is created, exporting `Dialog`, `DialogTrigger`, `DialogPortal`, `DialogClose`, `DialogOverlay`, `DialogContent`, `DialogHeader`, `DialogFooter`, `DialogTitle`, `DialogDescription`. It's built on `@base-ui/react/dialog` (matches this repo's `base-vega` shadcn style, same as the existing `Button`).
+Expected: `components/ui/dialog.tsx` is created, exporting `Dialog`, `DialogTrigger`, `DialogPortal`, `DialogClose`, `DialogOverlay`, `DialogContent`, `DialogHeader`, `DialogFooter`, `DialogTitle`, `DialogDescription`. It's built on `@base-ui/react/dialog` (matches this repo's `base-vega` shadcn style, same as the existing `Button`). It also includes a built-in close (X) button in the top-right of `DialogContent` by default.
 
 - [ ] **Step 2: Type-check and lint**
 
 Run: `npx tsc --noEmit && npm run lint`
-Expected: no new errors (pre-existing `app/page.tsx` errors from Task 3 are still expected until Task 10).
+Expected: no new errors (pre-existing `app/page.tsx` errors from Task 2 are still expected until Task 9).
 
 - [ ] **Step 3: Commit**
 
@@ -659,65 +336,14 @@ git commit -m "chore: add shadcn dialog component"
 
 ---
 
-### Task 6: `BookSearchResultItem` component
+### Task 5: `BookSearchResultItem` component
 
 **Files:**
 - Create: `components/book-search/BookSearchResultItem.tsx`
-- Test: `components/book-search/BookSearchResultItem.test.tsx`
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the component**
 
-> Per the design spec, the "success state" after saving is represented by the `isSaved` prop flipping true (driven by the parent's `savedBooks` list updating), not by a separate local success flag — so this component only needs local state for the transient `loading`/`error` states of its own click.
-
-Create `components/book-search/BookSearchResultItem.test.tsx`:
-```tsx
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { BookSearchResultItem } from "./BookSearchResultItem";
-import { IdentifiedBook } from "@/app/books/identify/types";
-
-const book: IdentifiedBook = { id: "1", title: "Dune", authors: ["Frank Herbert"] };
-
-describe("BookSearchResultItem", () => {
-  it("renders title and author", () => {
-    render(<BookSearchResultItem book={book} isSaved={false} onSave={vi.fn()} />);
-    expect(screen.getByText("Dune")).toBeInTheDocument();
-    expect(screen.getByText("Frank Herbert")).toBeInTheDocument();
-  });
-
-  it("shows a disabled Saved badge when isSaved is true", () => {
-    render(<BookSearchResultItem book={book} isSaved onSave={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /saved/i })).toBeDisabled();
-  });
-
-  it("calls onSave with the book when Save is clicked", async () => {
-    const onSave = vi.fn().mockResolvedValue(undefined);
-    const user = userEvent.setup();
-    render(<BookSearchResultItem book={book} isSaved={false} onSave={onSave} />);
-    await user.click(screen.getByRole("button", { name: /^save$/i }));
-    expect(onSave).toHaveBeenCalledWith(book);
-  });
-
-  it("shows an error and lets the user retry when onSave rejects", async () => {
-    const onSave = vi.fn().mockRejectedValueOnce(new Error("fail"));
-    const user = userEvent.setup();
-    render(<BookSearchResultItem book={book} isSaved={false} onSave={onSave} />);
-    await user.click(screen.getByRole("button", { name: /^save$/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/failed to save/i)).toBeInTheDocument(),
-    );
-    expect(screen.getByRole("button", { name: /retry/i })).toBeEnabled();
-  });
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `npx vitest run components/book-search/BookSearchResultItem.test.tsx`
-Expected: FAIL — module doesn't exist.
-
-- [ ] **Step 3: Write the component**
+> Per the design spec, the "success state" after saving is represented by the `isSaved` prop flipping true (driven by the parent's `savedBooks` list updating once the save completes), not by a separate local success flag — so this component only needs local state for its own click's transient `loading`/`error` states.
 
 Create `components/book-search/BookSearchResultItem.tsx`:
 ```tsx
@@ -793,103 +419,28 @@ export function BookSearchResultItem({
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `npx vitest run components/book-search/BookSearchResultItem.test.tsx`
-Expected: PASS (4 tests).
-
-- [ ] **Step 5: Type-check**
+- [ ] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit`
-Expected: same pre-existing `app/page.tsx` errors, no new ones.
+Expected: same pre-existing `app/page.tsx` errors, no new ones. This component will be exercised visually in the Task 9 browser walkthrough.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add components/book-search/BookSearchResultItem.tsx components/book-search/BookSearchResultItem.test.tsx
+git add components/book-search/BookSearchResultItem.tsx
 git commit -m "feat: add BookSearchResultItem component"
 ```
 
 ---
 
-### Task 7: `BookSearchDialog` component
+### Task 6: `BookSearchDialog` component
 
 **Files:**
 - Create: `components/book-search/BookSearchDialog.tsx`
-- Test: `components/book-search/BookSearchDialog.test.tsx`
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the component**
 
-> These tests cover the loading/error/empty/results states this component is responsible for rendering. The custom "anchored below the header" positioning is CSS-only and not asserted on here — it's covered by manual browser verification in Task 10.
-
-Create `components/book-search/BookSearchDialog.test.tsx`:
-```tsx
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { BookSearchDialog } from "./BookSearchDialog";
-import { IdentifiedBook } from "@/app/books/identify/types";
-import type { ComponentProps } from "react";
-
-const book: IdentifiedBook = { id: "1", title: "Dune", authors: ["Frank Herbert"] };
-
-function renderDialog(overrides: Partial<ComponentProps<typeof BookSearchDialog>> = {}) {
-  return render(
-    <BookSearchDialog
-      open
-      onOpenChange={vi.fn()}
-      query="dune"
-      results={[]}
-      status="idle"
-      errorMessage={null}
-      savedBookIds={new Set()}
-      onSave={vi.fn()}
-      {...overrides}
-    />,
-  );
-}
-
-describe("BookSearchDialog", () => {
-  it("shows a loading state while searching", () => {
-    renderDialog({ status: "loading" });
-    expect(screen.getByText(/searching/i)).toBeInTheDocument();
-  });
-
-  it("shows the error message on failure", () => {
-    renderDialog({
-      status: "error",
-      errorMessage: "Failed to search for books. Try again.",
-    });
-    expect(
-      screen.getByText("Failed to search for books. Try again."),
-    ).toBeInTheDocument();
-  });
-
-  it("shows an empty state naming the query when there are no results", () => {
-    renderDialog({ status: "success", results: [] });
-    expect(screen.getByText(/no books found for "dune"/i)).toBeInTheDocument();
-  });
-
-  it("renders one result row per book", () => {
-    renderDialog({ status: "success", results: [book] });
-    expect(screen.getByText("Dune")).toBeInTheDocument();
-    expect(screen.getByText("Frank Herbert")).toBeInTheDocument();
-  });
-
-  it("marks a result as saved when its id is in savedBookIds", () => {
-    renderDialog({ status: "success", results: [book], savedBookIds: new Set(["1"]) });
-    expect(screen.getByRole("button", { name: /saved/i })).toBeDisabled();
-  });
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `npx vitest run components/book-search/BookSearchDialog.test.tsx`
-Expected: FAIL — module doesn't exist.
-
-- [ ] **Step 3: Write the component**
-
-> Positioned with `top-20 translate-y-0` (overriding shadcn's default centered `top-1/2 -translate-y-1/2`) so the panel anchors below the fixed header instead of the screen center — see the design spec's "Layout approach". `tailwind-merge` (via `cn()`) resolves the conflicting `top-*`/`translate-y-*` utilities correctly.
+> Positioned with `top-20 translate-y-0` (overriding shadcn's default centered `top-1/2 -translate-y-1/2`) so the panel anchors below the fixed header instead of the screen center — see the design spec's "Layout approach". `tailwind-merge` (via `cn()`, used internally by the shadcn `Dialog` components) resolves the conflicting `top-*`/`translate-y-*` utilities correctly, keeping the later ones.
 
 Create `components/book-search/BookSearchDialog.tsx`:
 ```tsx
@@ -978,65 +529,26 @@ export function BookSearchDialog({
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `npx vitest run components/book-search/BookSearchDialog.test.tsx`
-Expected: PASS (5 tests).
-
-- [ ] **Step 5: Type-check**
+- [ ] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit`
 Expected: same pre-existing `app/page.tsx` errors, no new ones.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add components/book-search/BookSearchDialog.tsx components/book-search/BookSearchDialog.test.tsx
+git add components/book-search/BookSearchDialog.tsx
 git commit -m "feat: add BookSearchDialog component"
 ```
 
 ---
 
-### Task 8: `BookSearchBar` component
+### Task 7: `BookSearchBar` component
 
 **Files:**
 - Create: `components/book-search/BookSearchBar.tsx`
-- Test: `components/book-search/BookSearchBar.test.tsx`
 
-- [ ] **Step 1: Write the failing tests**
-
-Create `components/book-search/BookSearchBar.test.tsx`:
-```tsx
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { BookSearchBar } from "./BookSearchBar";
-
-describe("BookSearchBar", () => {
-  it("calls onQueryChange as the user types", async () => {
-    const onQueryChange = vi.fn();
-    const user = userEvent.setup();
-    render(<BookSearchBar query="" onQueryChange={onQueryChange} onSubmit={vi.fn()} />);
-    await user.type(screen.getByPlaceholderText(/search for a book/i), "d");
-    expect(onQueryChange).toHaveBeenCalledWith("d");
-  });
-
-  it("calls onSubmit with the current query when the form is submitted", async () => {
-    const onSubmit = vi.fn();
-    const user = userEvent.setup();
-    render(<BookSearchBar query="dune" onQueryChange={vi.fn()} onSubmit={onSubmit} />);
-    await user.click(screen.getByRole("button", { name: /search/i }));
-    expect(onSubmit).toHaveBeenCalledWith("dune");
-  });
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `npx vitest run components/book-search/BookSearchBar.test.tsx`
-Expected: FAIL — module doesn't exist.
-
-- [ ] **Step 3: Write the component**
+- [ ] **Step 1: Write the component**
 
 Create `components/book-search/BookSearchBar.tsx`:
 ```tsx
@@ -1079,126 +591,28 @@ export function BookSearchBar({ query, onQueryChange, onSubmit }: BookSearchBarP
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `npx vitest run components/book-search/BookSearchBar.test.tsx`
-Expected: PASS (2 tests).
-
-- [ ] **Step 5: Type-check**
+- [ ] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit`
 Expected: same pre-existing `app/page.tsx` errors, no new ones.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add components/book-search/BookSearchBar.tsx components/book-search/BookSearchBar.test.tsx
+git add components/book-search/BookSearchBar.tsx
 git commit -m "feat: add BookSearchBar component"
 ```
 
 ---
 
-### Task 9: `BookSearch` container component
+### Task 8: `BookSearch` container component
 
 **Files:**
 - Create: `components/book-search/BookSearch.tsx`
-- Test: `components/book-search/BookSearch.test.tsx`
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the component**
 
-> This wires the pieces together, so `useBookSearch` and `selectBook` are mocked here — their own behavior is already covered by Tasks 3 and 4. What's under test is `BookSearch`'s own logic: not searching before the dialog opens, opening + immediate-searching on submit, debounced-searching further edits, and the save → `handleAddSavedBook` hand-off.
-
-Create `components/book-search/BookSearch.test.tsx`:
-```tsx
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { BookSearch } from "./BookSearch";
-
-vi.mock("@/app/books/identify/actions", () => ({
-  selectBook: vi.fn(),
-}));
-vi.mock("@/hooks/useBookSearch", () => ({
-  useBookSearch: vi.fn(),
-}));
-
-import { selectBook } from "@/app/books/identify/actions";
-import { useBookSearch } from "@/hooks/useBookSearch";
-
-describe("BookSearch", () => {
-  const searchMock = vi.fn();
-  const searchImmediateMock = vi.fn();
-  const cancelMock = vi.fn();
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(useBookSearch).mockReturnValue({
-      results: [],
-      status: "idle",
-      errorMessage: null,
-      search: searchMock,
-      searchImmediate: searchImmediateMock,
-      cancel: cancelMock,
-    });
-  });
-
-  it("does not call search before the dialog has been opened", async () => {
-    const user = userEvent.setup();
-    render(<BookSearch savedBooks={[]} handleAddSavedBook={vi.fn()} />);
-    await user.type(screen.getByPlaceholderText(/search for a book/i), "dune");
-    expect(searchMock).not.toHaveBeenCalled();
-  });
-
-  it("opens the dialog and searches immediately on submit", async () => {
-    const user = userEvent.setup();
-    render(<BookSearch savedBooks={[]} handleAddSavedBook={vi.fn()} />);
-    await user.type(screen.getByPlaceholderText(/search for a book/i), "dune");
-    await user.click(screen.getByRole("button", { name: /search/i }));
-    expect(searchImmediateMock).toHaveBeenCalledWith("dune");
-    expect(screen.getByText("Search results")).toBeInTheDocument();
-  });
-
-  it("debounce-searches further edits once the dialog is open", async () => {
-    const user = userEvent.setup();
-    render(<BookSearch savedBooks={[]} handleAddSavedBook={vi.fn()} />);
-    const input = screen.getByPlaceholderText(/search for a book/i);
-    await user.type(input, "dune");
-    await user.click(screen.getByRole("button", { name: /search/i }));
-    await user.type(input, "!");
-    expect(searchMock).toHaveBeenCalledWith("dune!");
-  });
-
-  it("calls selectBook then handleAddSavedBook when a result is saved", async () => {
-    const book = { id: "1", title: "Dune", authors: ["Frank Herbert"] };
-    const bookWithThemes = { ...book, themes: ["Sci-Fi"] };
-    vi.mocked(selectBook).mockResolvedValue(bookWithThemes);
-    vi.mocked(useBookSearch).mockReturnValue({
-      results: [book],
-      status: "success",
-      errorMessage: null,
-      search: searchMock,
-      searchImmediate: searchImmediateMock,
-      cancel: cancelMock,
-    });
-    const handleAddSavedBook = vi.fn();
-    const user = userEvent.setup();
-    render(<BookSearch savedBooks={[]} handleAddSavedBook={handleAddSavedBook} />);
-    await user.type(screen.getByPlaceholderText(/search for a book/i), "dune");
-    await user.click(screen.getByRole("button", { name: /search/i }));
-    await user.click(screen.getByRole("button", { name: /^save$/i }));
-
-    expect(selectBook).toHaveBeenCalledWith(book);
-    await waitFor(() => expect(handleAddSavedBook).toHaveBeenCalledWith(bookWithThemes));
-  });
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `npx vitest run components/book-search/BookSearch.test.tsx`
-Expected: FAIL — module doesn't exist.
-
-- [ ] **Step 3: Write the component**
+> Ties `useBookSearch`, `BookSearchBar`, and `BookSearchDialog` together, and is where `selectBook` gets called on save. `z-[60]` on the header (an arbitrary value — `z-60` is not on Tailwind's default scale, which stops at `z-50`) is what keeps the header above the dialog's `z-50` overlay, so the search input stays visible while the dialog is open.
 
 Create `components/book-search/BookSearch.tsx`:
 ```tsx
@@ -1270,26 +684,21 @@ export function BookSearch({ savedBooks, handleAddSavedBook }: BookSearchProps) 
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `npx vitest run components/book-search/BookSearch.test.tsx`
-Expected: PASS (4 tests).
-
-- [ ] **Step 5: Type-check**
+- [ ] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit`
 Expected: same pre-existing `app/page.tsx` errors, no new ones.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add components/book-search/BookSearch.tsx components/book-search/BookSearch.test.tsx
+git add components/book-search/BookSearch.tsx
 git commit -m "feat: add BookSearch container component"
 ```
 
 ---
 
-### Task 10: Wire `BookSearch` into `page.tsx`; retire the footer search input
+### Task 9: Wire `BookSearch` into `page.tsx`; retire the footer search input
 
 **Files:**
 - Modify: `app/page.tsx`
@@ -1515,14 +924,9 @@ Modify `components/display.tsx:315`:
 - [ ] **Step 3: Type-check, lint, build**
 
 Run: `npx tsc --noEmit && npm run lint && npm run build`
-Expected: all three pass clean (this resolves the `app/page.tsx` errors that were expected since Task 3).
+Expected: all three pass clean (this resolves the `app/page.tsx` errors that were expected since Task 2).
 
-- [ ] **Step 4: Run the full test suite**
-
-Run: `npm run test`
-Expected: all tests from Tasks 1–9 pass.
-
-- [ ] **Step 5: Manual verification in the browser**
+- [ ] **Step 4: Manual verification in the browser**
 
 Run: `npm run dev`, open `http://localhost:3000`, and walk through:
 1. Type 1–2 characters in the top search bar — no dialog opens, no network request (check the Network tab).
@@ -1532,7 +936,7 @@ Run: `npm run dev`, open `http://localhost:3000`, and walk through:
 5. Close the dialog via the X button, then reopen with a new search — a book already saved shows the "Saved" badge immediately.
 6. Search for something with no matches (e.g. a nonsense string) — the empty state message appears.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add app/page.tsx components/display.tsx
@@ -1541,31 +945,26 @@ git commit -m "feat: wire BookSearch into the top-level page, retire footer sear
 
 ---
 
-### Task 11: Final verification pass
+### Task 10: Final verification pass
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Run the full test suite**
-
-Run: `npm run test`
-Expected: all tests pass, 0 failures.
-
-- [ ] **Step 2: Type-check**
+- [ ] **Step 1: Type-check**
 
 Run: `npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 3: Lint**
+- [ ] **Step 2: Lint**
 
 Run: `npm run lint`
 Expected: no new errors (the pre-existing `react-hooks/exhaustive-deps` warning on the mock-books `useEffect` in `app/page.tsx` is expected and unrelated to this feature).
 
-- [ ] **Step 4: Build**
+- [ ] **Step 3: Build**
 
 Run: `npm run build`
 Expected: production build succeeds.
 
-- [ ] **Step 5: Confirm no dead code remains**
+- [ ] **Step 4: Confirm no dead code remains**
 
 Run: `grep -rn "identifyBook\|IdentifyBookState" --include="*.ts" --include="*.tsx" . | grep -v node_modules`
 Expected: no matches.
