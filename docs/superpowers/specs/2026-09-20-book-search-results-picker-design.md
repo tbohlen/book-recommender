@@ -45,8 +45,8 @@ New `components/book-search/` folder:
   backdrop-click close).
 - **`BookSearchResultItem.tsx`** — one result row: title, authors, cover
   (if available). Owns its own local save button state (idle / loading /
-  success / error). Compares `book.id` against `savedBooks` (from
-  `useLibrary`) to render a disabled "Saved" badge instead of an active
+  success / error). Compares `bookKey(book)` (title + first author,
+  so other editions match) against `savedBooks` (from `useLibrary`) to render a disabled "Saved" badge instead of an active
   Save button when the book is already in the library.
 - **`hooks/useBookSearch.ts`** — debounced, abortable search against the
   new `/books/search` route. Owns `results`, `status`

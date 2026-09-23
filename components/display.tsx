@@ -210,6 +210,9 @@ export default function Display({
           });
         }
 
+        // TODO(dedupe): recBooks is cached on the node and never re-synced
+        // with the library, so books saved later still show here, and
+        // RecNode.saved drifts from the library's saved state. See TODO.md.
         /**
          * Expands or collapses a theme node's recommendations. On first
          * expansion, fetches recommendations from the `/books/recs` route
