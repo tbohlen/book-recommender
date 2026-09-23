@@ -51,6 +51,8 @@
 **Ideas & decisions:**
 - A repeat recommendation appends its theme to the existing book's `themes` instead of creating a second entry, so themes pile up as a record of every path that led to the book.
 - Saving an already-saved book is now a no-op rather than re-centering it. Centering doesn't fit the multi-save search dialog, and that dialog already shows a "Saved" badge.
-- Keying by Google Books id doesn't catch the same book in different editions. Each edition has its own volume id. We noted this as the next gap to decide on.
+- Keying by Google Books id didn't catch the same book in different editions, since each edition has its own volume id. We switched the library's identity to a normalized "title + first author" key (`bookKey`), which falls back to the volume id when either field is missing so two different works that happen to share a title don't get merged.
+- Every recommendation, including the first, now adds the theme that produced it. That way a book's themes always record every path that led to it.
+- We decided to leave some things for later and listed them in `TODO.md`: graph nodes that go stale, a Claude call wasted when saving a book the library already holds, and recommendation slots wasted on saved books.
 
 ---
