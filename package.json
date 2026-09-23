@@ -14,7 +14,6 @@
     "@googleapis/books": "^9.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "cn": "^0.4.0",
     "lucide-react": "^1.31.0",
     "next": "16.3.0",
     "p5": "^1.9.4",
