@@ -29,9 +29,8 @@ call) before `ADD_SAVED_BOOK`. When the book is already in the library
 (e.g. as a recommendation, possibly a different edition), the reducer
 keeps the library's copy and the new themes are thrown away. The
 `BookSearch` save handler should check `bookKey(book)` against the
-library first and skip `selectBook` in that case. (The planned
-`handleSave` in `docs/superpowers/plans/2026-09-20-book-search-results-picker.md`
-is marked with this TODO.)
+library first and skip `selectBook` in that case. (`handleSave` in
+`components/book-search/BookSearch.tsx` is marked with this TODO.)
 
 ### Recommendation slots wasted on saved books (accepted for now)
 Saved books are filtered out *after* Claude recommends them, so a

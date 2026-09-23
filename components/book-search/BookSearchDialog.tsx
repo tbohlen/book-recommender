@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { BookSearchResultItem } from "./BookSearchResultItem";
 import { IdentifiedBook } from "@/app/books/identify/types";
 import { BookSearchStatus } from "@/hooks/useBookSearch";
+import { bookKey } from "@/app/library/bookKey";
 
 interface BookSearchDialogProps {
   open: boolean;
@@ -19,7 +20,7 @@ interface BookSearchDialogProps {
   results: IdentifiedBook[];
   status: BookSearchStatus;
   errorMessage: string | null;
-  savedBookIds: Set<string>;
+  savedBookKeys: Set<string>;
   onSave: (book: IdentifiedBook) => Promise<void>;
 }
 
@@ -35,7 +36,7 @@ export function BookSearchDialog({
   results,
   status,
   errorMessage,
-  savedBookIds,
+  savedBookKeys,
   onSave,
 }: BookSearchDialogProps) {
   return (
@@ -78,7 +79,7 @@ export function BookSearchDialog({
               <BookSearchResultItem
                 key={book.id}
                 book={book}
-                isSaved={savedBookIds.has(book.id)}
+                isSaved={savedBookKeys.has(bookKey(book))}
                 onSave={onSave}
               />
             ))}
