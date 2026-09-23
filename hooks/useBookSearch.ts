@@ -70,8 +70,14 @@ export function useBookSearch(): UseBookSearchReturn {
     [abortInFlight],
   );
 
-  const search = useCallback(
-    (query: string) => {
+  /**
+   * Shared setup for both `search` and `searchImmediate`: aborts any
+   * in-flight/pending request immediately, then validates the query.
+   * Returns the trimmed query, or `null` if it's too short (and resets to
+   * the idle/empty state in that case).
+   */
+  const prepareQuery = useCallback(
+    (query: string): string | null => {
       abortInFlight();
       clearPendingTimeout();
 
@@ -80,8 +86,17 @@ export function useBookSearch(): UseBookSearchReturn {
         setStatus("idle");
         setResults([]);
         lastQueryRef.current = null;
-        return;
+        return null;
       }
+      return trimmed;
+    },
+    [abortInFlight, clearPendingTimeout],
+  );
+
+  const search = useCallback(
+    (query: string) => {
+      const trimmed = prepareQuery(query);
+      if (trimmed === null) return;
       if (trimmed === lastQueryRef.current) return;
 
       timeoutRef.current = setTimeout(() => {
@@ -89,24 +104,16 @@ export function useBookSearch(): UseBookSearchReturn {
         runSearch(trimmed);
       }, DEBOUNCE_MS);
     },
-    [abortInFlight, clearPendingTimeout, runSearch],
+    [prepareQuery, runSearch],
   );
 
   const searchImmediate = useCallback(
     (query: string) => {
-      abortInFlight();
-      clearPendingTimeout();
-
-      const trimmed = query.trim();
-      if (trimmed.length < MIN_QUERY_LENGTH) {
-        setStatus("idle");
-        setResults([]);
-        lastQueryRef.current = null;
-        return;
-      }
+      const trimmed = prepareQuery(query);
+      if (trimmed === null) return;
       runSearch(trimmed);
     },
-    [abortInFlight, clearPendingTimeout, runSearch],
+    [prepareQuery, runSearch],
   );
 
   const cancel = useCallback(() => {
