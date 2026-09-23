@@ -135,7 +135,10 @@ export default function Home() {
 
   return (
     <main className="bg-white dark:bg-black w-full h-full">
-      <BookSearch savedBooks={savedBooks} handleAddSavedBook={handleAddSavedBook} />
+      <BookSearch
+        savedBooks={savedBooks}
+        handleAddSavedBook={handleAddSavedBook}
+      />
 
       <Display
         savedBooks={savedBooks}
