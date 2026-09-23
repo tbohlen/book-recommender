@@ -41,3 +41,16 @@
 **What's next:** Port sketch2.js into `display.tsx` once Turner adds three things to `page.tsx` (Generate Themes button, Select Mode toggle, handleAddSavedBook fix). See `HANDOFF.md`.
 
 ---
+
+## 2026-09-22 — One book, one entry: deduplicating the library
+
+**Context:** Once recommendations could come from several themes and users could save many books from one search, the same Google Books volume started showing up in more than one place. It appeared as a saved book and again as a recommendation, or under two theme nodes as separate copies, and a later save could silently overwrite earlier data.
+
+**What happened:** The library was already keyed by Google Books id, so we assumed uniqueness was mostly handled. It wasn't. `ADD_SAVED_BOOK` blindly upserted, which reset a recommended book's `recommended` flag and threw away its data. `ADD_RECOMMENDED_BOOKS` skipped known ids entirely, so a book the user had unsaved could never come back as a recommendation. And `page.tsx` handed the graph the raw fetch result rather than what the library actually stored. We pulled the rules into one pure function, `reconcileRecommendations`, which both the reducer and `useLibrary` use. That way the graph and the store can't disagree about which books a theme produced.
+
+**Ideas & decisions:**
+- A repeat recommendation appends its theme to the existing book's `themes` instead of creating a second entry, so themes pile up as a record of every path that led to the book.
+- Saving an already-saved book is now a no-op rather than re-centering it. Centering doesn't fit the multi-save search dialog, and that dialog already shows a "Saved" badge.
+- Keying by Google Books id doesn't catch the same book in different editions. Each edition has its own volume id. We noted this as the next gap to decide on.
+
+---
