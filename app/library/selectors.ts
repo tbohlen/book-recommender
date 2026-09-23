@@ -20,6 +20,6 @@ export function selectSelectedBooks(state: LibraryState): BookWithThemes[] {
 }
 
 export function selectCenteredBook(state: LibraryState): BookWithThemes | null {
-  if (!state.centeredBookId) return null;
-  return state.entities[state.centeredBookId]?.book ?? null;
+  if (!state.centeredBookKey) return null;
+  return state.entities[state.centeredBookKey]?.book ?? null;
 }

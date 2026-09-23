@@ -1,17 +1,19 @@
 import { BookWithThemes } from "@/app/books/identify/types";
 import { BookEntity } from "./types";
+import { bookKey } from "./bookKey";
 
 /**
- * Collapses a list of books to one entry per Google Books id, keeping the
- * first occurrence. A single recommendation batch can contain the same
- * volume twice (two AI suggestions resolving to the same Google Books
- * match), and the library must never hold two copies of one id.
+ * Collapses a list of books to one entry per `bookKey`, keeping the first
+ * occurrence. A single recommendation batch can contain the same book twice
+ * (two AI suggestions resolving to the same work, possibly different
+ * editions), and the library must never hold two copies of one book.
  */
-export function uniqueById(books: BookWithThemes[]): BookWithThemes[] {
+export function uniqueByKey(books: BookWithThemes[]): BookWithThemes[] {
   const seen = new Set<string>();
   return books.filter((book) => {
-    if (seen.has(book.id)) return false;
-    seen.add(book.id);
+    const key = bookKey(book);
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }
@@ -38,7 +40,7 @@ export function appendTheme(
  * against what's already in the library, returning the books that should
  * be shown/stored as recommendations:
  *
- * - duplicates within the batch are collapsed (one entry per id);
+ * - duplicates within the batch are collapsed (one entry per `bookKey`);
  * - books the user has already saved are dropped entirely;
  * - books already in the library but not saved are replaced by the
  *   library's copy with `theme` appended to its themes, so repeated
@@ -54,10 +56,10 @@ export function reconcileRecommendations(
   books: BookWithThemes[],
   theme: string,
 ): BookWithThemes[] {
-  return uniqueById(books)
-    .filter((book) => !entities[book.id]?.saved)
+  return uniqueByKey(books)
+    .filter((book) => !entities[bookKey(book)]?.saved)
     .map((book) => {
-      const existing = entities[book.id];
+      const existing = entities[bookKey(book)];
       if (!existing) return book;
       return {
         ...existing.book,
