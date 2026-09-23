@@ -51,6 +51,7 @@ import { useCallback, useEffect, useState } from "react";
 import fetchRecommendations from "./books/recs/fetchRecommendations";
 import { useLibrary } from "./library/useLibrary";
 import { Spinner } from "@/components/ui/spinner";
+import { BookWithThemes } from "./books/identify/types";
 
 export default function Home() {
   const {
@@ -127,10 +128,18 @@ export default function Home() {
       setIsGenerating(false);
     }
   }
-
-  function handleGetRecs() {
-    setShowPanel(true);
-  }
+  const handleGetRecs = useCallback(
+    async () => {
+      const recommendedBooks = await fetchRecommendations(
+        null,
+        selectedBooks,
+        aiQuery,
+      );
+      console.log("Recommendations:", recommendedBooks);
+      setShowPanel(true);
+    },
+    [selectedBooks, aiQuery],
+  );
 
   return (
     <main className="bg-white dark:bg-black w-full h-full">

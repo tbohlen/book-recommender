@@ -6,14 +6,17 @@ import { BookWithThemes } from "../identify/types";
  * `onFetchRecommendations` prop).
  */
 export default async function fetchRecommendations(
-  theme: string,
+  theme: string | null,
+  books: BookWithThemes[] | null = [],
+  prompt?: string | null,
 ): Promise<BookWithThemes[]> {
   const res = await fetch("/books/recs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theme }),
+    body: JSON.stringify({ theme, books, prompt }),
   });
   if (!res.ok) {
+    console.log("Error: ", await res.text());
     throw new Error(`Failed to fetch recommendations for "${theme}".`);
   }
   return await res.json();

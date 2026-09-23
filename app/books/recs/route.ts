@@ -19,14 +19,14 @@ const anthropicClient = new Anthropic();
 const requestBodySchema = z.object({
   books: z
     .array(bookWithThemesSchema)
-    .optional()
+    .nullish()
     .describe(
       "A list of books that provide context on what to recommend. The prompt, if provided, will explain how to use them. If it does not, the system will attempt to recommend books like them.",
     ),
-  theme: z.string().optional().describe("The theme to recommend books for."),
+  theme: z.string().nullish().describe("The theme to recommend books for."),
   prompt: z
     .string()
-    .optional()
+    .nullish()
     .describe(
       "An optional free-text description of what to recommend, evaluated alongside any theme/books context.",
     ),
