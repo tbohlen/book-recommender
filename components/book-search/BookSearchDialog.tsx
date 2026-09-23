@@ -40,7 +40,7 @@ export function BookSearchDialog({
 }: BookSearchDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="top-20 max-w-lg translate-y-0 gap-4">
+      <DialogContent className="top-20 sm:max-w-lg translate-y-0 gap-4">
         <DialogHeader>
           <DialogTitle>Search results</DialogTitle>
           <DialogDescription>
@@ -49,6 +49,12 @@ export function BookSearchDialog({
         </DialogHeader>
 
         <div className="max-h-96 divide-y divide-border overflow-y-auto">
+          {status === "idle" && (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Keep typing to search.
+            </p>
+          )}
+
           {status === "loading" && (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
               <Spinner /> Searching...
