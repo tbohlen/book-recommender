@@ -42,11 +42,11 @@ export function appendTheme(
  *
  * - duplicates within the batch are collapsed (one entry per `bookKey`);
  * - books the user has already saved are dropped entirely;
- * - books already in the library but not saved are replaced by the
- *   library's copy with `theme` appended to its themes, so repeated
- *   recommendations accumulate themes instead of creating a second entry
- *   or overwriting earlier data;
- * - books not yet in the library pass through unchanged.
+ * - every remaining book gets `theme` appended to its themes, so a
+ *   book's themes always include each theme it was recommended for;
+ * - books already in the library but not saved use the library's copy as
+ *   the base, so repeated recommendations accumulate themes instead of
+ *   creating a second entry or overwriting earlier data.
  *
  * Pure: used both by the reducer (to update state) and by `useLibrary`
  * (to hand the graph the same reconciled list it will store).
@@ -59,11 +59,7 @@ export function reconcileRecommendations(
   return uniqueByKey(books)
     .filter((book) => !entities[bookKey(book)]?.saved)
     .map((book) => {
-      const existing = entities[bookKey(book)];
-      if (!existing) return book;
-      return {
-        ...existing.book,
-        themes: appendTheme(existing.book.themes, theme),
-      };
+      const base = entities[bookKey(book)]?.book ?? book;
+      return { ...base, themes: appendTheme(base.themes, theme) };
     });
 }
