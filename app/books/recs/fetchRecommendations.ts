@@ -8,7 +8,11 @@ import { BookWithThemes } from "../identify/types";
 export default async function fetchRecommendations(
   theme: string,
 ): Promise<BookWithThemes[]> {
-  const res = await fetch(`/books/recs?theme=${encodeURIComponent(theme)}`);
+  const res = await fetch("/books/recs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ theme }),
+  });
   if (!res.ok) {
     throw new Error(`Failed to fetch recommendations for "${theme}".`);
   }
