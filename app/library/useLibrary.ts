@@ -1,4 +1,4 @@
-import { useCallback, useReducer } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import { libraryReducer, initialLibraryState } from "./reducer";
 import {
   selectSavedBooks,
@@ -6,6 +6,7 @@ import {
   selectSelectedBooks,
   selectCenteredBook,
 } from "./selectors";
+import { reconcileRecommendations } from "./dedupe";
 import { BookWithThemes } from "@/app/books/identify/types";
 
 /**
@@ -18,13 +19,29 @@ import { BookWithThemes } from "@/app/books/identify/types";
 export function useLibrary() {
   const [state, dispatch] = useReducer(libraryReducer, initialLibraryState);
 
+  // Latest committed state, readable from async callbacks (e.g. a rec fetch
+  // that resolves after the user saved more books) without re-creating
+  // them on every state change.
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
   const handleAddSavedBook = useCallback(
     (book: BookWithThemes) => dispatch({ type: "ADD_SAVED_BOOK", book }),
     [dispatch],
   );
+  /**
+   * Adds a batch of recommendations for `theme` and returns the reconciled
+   * list the caller should display: saved books removed, duplicates
+   * collapsed, and already-recommended books replaced by the library's
+   * copy with `theme` appended to their themes.
+   */
   const handleAddRecommendedBooks = useCallback(
-    (books: BookWithThemes[]) =>
-      dispatch({ type: "ADD_RECOMMENDED_BOOKS", books }),
+    (books: BookWithThemes[], theme: string): BookWithThemes[] => {
+      dispatch({ type: "ADD_RECOMMENDED_BOOKS", books, theme });
+      return reconcileRecommendations(stateRef.current.entities, books, theme);
+    },
     [dispatch],
   );
   const handleSaveBook = useCallback(

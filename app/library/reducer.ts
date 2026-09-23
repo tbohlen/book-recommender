@@ -1,4 +1,5 @@
 import { LibraryState, LibraryAction, BookEntity } from "./types";
+import { reconcileRecommendations } from "./dedupe";
 
 export const initialLibraryState: LibraryState = {
   entities: {},
@@ -8,34 +9,44 @@ export const initialLibraryState: LibraryState = {
 /**
  * Reducer for the user's library of saved/recommended books.
  *
- * Books are stored once, keyed by id, and referenced by status rather than
- * duplicated across separate saved/recommended arrays — see `BookEntity`.
+ * Books are stored once, keyed by their Google Books id, and referenced by
+ * status rather than duplicated across separate saved/recommended arrays —
+ * see `BookEntity`. Every action that adds books goes through an existence
+ * check so an id can never be stored twice or silently overwritten.
  */
 export function libraryReducer(
   state: LibraryState,
   action: LibraryAction,
 ): LibraryState {
   switch (action.type) {
-    // Adding a saved book (from the identify search) also centers it, since
-    // that's the book the user just asked to look at. It was never
-    // recommended by the system, so `recommended` starts false.
-    case "ADD_SAVED_BOOK":
-      return {
-        ...upsertEntity(state, action.book, {
-          saved: true,
-          recommended: false,
-        }),
-        centeredBookId: action.book.id,
-      };
+    // Saving a book from search (or bookmarking a rec node):
+    // - already saved: no-op (the search UI shows it as "Saved" instead);
+    // - already known but unsaved (e.g. recommended): mark it saved,
+    //   keeping the library's copy so themes accumulated from earlier
+    //   recommendations and its `recommended` provenance survive;
+    // - new: add it as saved, never recommended.
+    case "ADD_SAVED_BOOK": {
+      const existing = state.entities[action.book.id];
+      if (existing?.saved) return state;
+      const withSaved = existing
+        ? updateEntity(state, action.book.id, (entity) => ({
+            ...entity,
+            saved: true,
+          }))
+        : upsertEntity(state, action.book, { saved: true, recommended: false });
+      return { ...withSaved, centeredBookId: action.book.id };
+    }
 
-    // Recommended books are added without disturbing books already known to
-    // the library, so a rec fetch never downgrades an already-saved book.
+    // Saved books are dropped from the batch and already-known unsaved
+    // books get the new theme appended (see `reconcileRecommendations`),
+    // so a rec fetch never duplicates or downgrades a book.
     case "ADD_RECOMMENDED_BOOKS":
-      return action.books.reduce(
-        (s, book) =>
-          s.entities[book.id]
-            ? s
-            : upsertEntity(s, book, { saved: false, recommended: true }),
+      return reconcileRecommendations(
+        state.entities,
+        action.books,
+        action.theme,
+      ).reduce(
+        (s, book) => upsertEntity(s, book, { saved: false, recommended: true }),
         state,
       );
 
@@ -67,20 +78,30 @@ export function libraryReducer(
   }
 }
 
+/**
+ * Writes `book` under its id with the given status flags, preserving any
+ * existing `selected` state so re-recommending a book doesn't silently
+ * drop it from the chat-context selection.
+ */
 function upsertEntity(
   state: LibraryState,
   book: BookEntity["book"],
   flags: Pick<BookEntity, "saved" | "recommended">,
 ): LibraryState {
+  const selected = state.entities[book.id]?.selected ?? false;
   return {
     ...state,
     entities: {
       ...state.entities,
-      [book.id]: { book, ...flags, selected: false },
+      [book.id]: { book, ...flags, selected },
     },
   };
 }
 
+/**
+ * Applies `update` to the entity with `bookId`, or returns `state`
+ * unchanged if no such entity exists.
+ */
 function updateEntity(
   state: LibraryState,
   bookId: string,
