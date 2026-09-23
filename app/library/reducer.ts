@@ -1,18 +1,19 @@
 import { LibraryState, LibraryAction, BookEntity } from "./types";
 import { reconcileRecommendations } from "./dedupe";
+import { bookKey } from "./bookKey";
 
 export const initialLibraryState: LibraryState = {
   entities: {},
-  centeredBookId: null,
+  centeredBookKey: null,
 };
 
 /**
  * Reducer for the user's library of saved/recommended books.
  *
- * Books are stored once, keyed by their Google Books id, and referenced by
+ * Books are stored once, keyed by `bookKey` (title + first author), and referenced by
  * status rather than duplicated across separate saved/recommended arrays —
  * see `BookEntity`. Every action that adds books goes through an existence
- * check so an id can never be stored twice or silently overwritten.
+ * check so a book can never be stored twice or silently overwritten.
  */
 export function libraryReducer(
   state: LibraryState,
@@ -26,15 +27,16 @@ export function libraryReducer(
     //   recommendations and its `recommended` provenance survive;
     // - new: add it as saved, never recommended.
     case "ADD_SAVED_BOOK": {
-      const existing = state.entities[action.book.id];
+      const key = bookKey(action.book);
+      const existing = state.entities[key];
       if (existing?.saved) return state;
       const withSaved = existing
-        ? updateEntity(state, action.book.id, (entity) => ({
+        ? updateEntity(state, key, (entity) => ({
             ...entity,
             saved: true,
           }))
         : upsertEntity(state, action.book, { saved: true, recommended: false });
-      return { ...withSaved, centeredBookId: action.book.id };
+      return { ...withSaved, centeredBookKey: key };
     }
 
     // Saved books are dropped from the batch and already-known unsaved
@@ -53,25 +55,25 @@ export function libraryReducer(
     // Only touches `saved` — `recommended` is provenance and doesn't change
     // just because the user (un)saved the book.
     case "SAVE_BOOK":
-      return updateEntity(state, action.bookId, (entity) => ({
+      return updateEntity(state, action.bookKey, (entity) => ({
         ...entity,
         saved: true,
       }));
 
     case "UNSAVE_BOOK":
-      return updateEntity(state, action.bookId, (entity) => ({
+      return updateEntity(state, action.bookKey, (entity) => ({
         ...entity,
         saved: false,
       }));
 
     case "TOGGLE_SELECTED":
-      return updateEntity(state, action.bookId, (entity) => ({
+      return updateEntity(state, action.bookKey, (entity) => ({
         ...entity,
         selected: !entity.selected,
       }));
 
     case "SET_CENTERED":
-      return { ...state, centeredBookId: action.bookId };
+      return { ...state, centeredBookKey: action.bookKey };
 
     default:
       return state;
@@ -79,7 +81,7 @@ export function libraryReducer(
 }
 
 /**
- * Writes `book` under its id with the given status flags, preserving any
+ * Writes `book` under its `bookKey` with the given status flags, preserving any
  * existing `selected` state so re-recommending a book doesn't silently
  * drop it from the chat-context selection.
  */
@@ -88,29 +90,30 @@ function upsertEntity(
   book: BookEntity["book"],
   flags: Pick<BookEntity, "saved" | "recommended">,
 ): LibraryState {
-  const selected = state.entities[book.id]?.selected ?? false;
+  const key = bookKey(book);
+  const selected = state.entities[key]?.selected ?? false;
   return {
     ...state,
     entities: {
       ...state.entities,
-      [book.id]: { book, ...flags, selected },
+      [key]: { book, ...flags, selected },
     },
   };
 }
 
 /**
- * Applies `update` to the entity with `bookId`, or returns `state`
+ * Applies `update` to the entity stored under `key`, or returns `state`
  * unchanged if no such entity exists.
  */
 function updateEntity(
   state: LibraryState,
-  bookId: string,
+  key: string,
   update: (entity: BookEntity) => BookEntity,
 ): LibraryState {
-  const entity = state.entities[bookId];
+  const entity = state.entities[key];
   if (!entity) return state;
   return {
     ...state,
-    entities: { ...state.entities, [bookId]: update(entity) },
+    entities: { ...state.entities, [key]: update(entity) },
   };
 }

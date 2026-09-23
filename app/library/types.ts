@@ -18,19 +18,20 @@ export interface BookEntity {
 }
 
 /**
- * The full library state: all known books keyed by their Google Books id
- * (so the same book can't end up duplicated across a "saved" list and a
- * "recommended" list), plus which one is currently centered in the graph.
+ * The full library state: all known books keyed by `bookKey` (normalized
+ * title + first author, so the same book — even in a different edition —
+ * can't end up duplicated across a "saved" list and a "recommended" list),
+ * plus which one is currently centered in the graph.
  */
 export interface LibraryState {
   entities: Record<string, BookEntity>;
-  centeredBookId: string | null;
+  centeredBookKey: string | null;
 }
 
 export type LibraryAction =
   | { type: "ADD_SAVED_BOOK"; book: BookWithThemes }
   | { type: "ADD_RECOMMENDED_BOOKS"; books: BookWithThemes[]; theme: string }
-  | { type: "SAVE_BOOK"; bookId: string }
-  | { type: "UNSAVE_BOOK"; bookId: string }
-  | { type: "TOGGLE_SELECTED"; bookId: string }
-  | { type: "SET_CENTERED"; bookId: string };
+  | { type: "SAVE_BOOK"; bookKey: string }
+  | { type: "UNSAVE_BOOK"; bookKey: string }
+  | { type: "TOGGLE_SELECTED"; bookKey: string }
+  | { type: "SET_CENTERED"; bookKey: string };

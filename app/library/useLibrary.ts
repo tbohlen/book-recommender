@@ -7,6 +7,7 @@ import {
   selectCenteredBook,
 } from "./selectors";
 import { reconcileRecommendations } from "./dedupe";
+import { bookKey } from "./bookKey";
 import { BookWithThemes } from "@/app/books/identify/types";
 
 /**
@@ -46,22 +47,22 @@ export function useLibrary() {
   );
   const handleSaveBook = useCallback(
     (book: BookWithThemes) =>
-      dispatch({ type: "SAVE_BOOK", bookId: book.id }),
+      dispatch({ type: "SAVE_BOOK", bookKey: bookKey(book) }),
     [dispatch],
   );
   const handleUnsaveBook = useCallback(
     (book: BookWithThemes) =>
-      dispatch({ type: "UNSAVE_BOOK", bookId: book.id }),
+      dispatch({ type: "UNSAVE_BOOK", bookKey: bookKey(book) }),
     [dispatch],
   );
   const handleSelectBook = useCallback(
     (book: BookWithThemes) =>
-      dispatch({ type: "TOGGLE_SELECTED", bookId: book.id }),
+      dispatch({ type: "TOGGLE_SELECTED", bookKey: bookKey(book) }),
     [dispatch],
   );
   const handleCenterBook = useCallback(
     (book: BookWithThemes) =>
-      dispatch({ type: "SET_CENTERED", bookId: book.id }),
+      dispatch({ type: "SET_CENTERED", bookKey: bookKey(book) }),
     [dispatch],
   );
 
