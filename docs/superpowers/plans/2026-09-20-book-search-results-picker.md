@@ -826,8 +826,7 @@ export default function Home() {
   const onFetchRecommendations = useCallback(
     async (theme: string) => {
       const books = await fetchRecommendations(theme);
-      handleAddRecommendedBooks(books);
-      return books;
+      return handleAddRecommendedBooks(books, theme);
     },
     [handleAddRecommendedBooks],
   );
