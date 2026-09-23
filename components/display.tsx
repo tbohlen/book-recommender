@@ -312,7 +312,7 @@ export default function Display({
           p.textAlign(p.CENTER, p.CENTER);
           p.textSize(14);
           p.textStyle(p.NORMAL);
-          p.text("Add books below, then click Generate Themes", 0, 0);
+          p.text("Search for a book above, then click Generate Themes", 0, 0);
         }
 
         // ─── Recursive graph ──────────────────────────────────────────────────────

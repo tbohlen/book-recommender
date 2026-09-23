@@ -9,15 +9,17 @@
  *   - Added isGenerating: boolean    — loading state for Generate Themes button
  *   - Added aiQuery: string          — text input for the AI query panel (placeholder)
  *   - Added showPanel: boolean       — controls bottom recommendations panel visibility (placeholder)
- *   - Added submitRef                — lets Enter key trigger the hidden search form submit
  *
  * Removed from useLibrary:
  *   - recommendedBooks, centeredBook, handleCenterBook
  *     (graph no longer anchors to a single centered book)
  *
- * handleSaveBook → handleAddSavedBook:
- *   - SAVE_BOOK silently fails if the book isn't already in entities as "recommended"
- *   - ADD_SAVED_BOOK always upserts, so bookmarking a rec node always works
+ * Book search:
+ *   - The old identifyBook/useActionState flow (free text -> silently take
+ *     the first Google Books match) is replaced by <BookSearch>, a fixed
+ *     header bar that opens a results dialog on submit and lets the user
+ *     pick the right book. See
+ *     docs/superpowers/specs/2026-09-20-book-search-results-picker-design.md.
  *
  * New functions:
  *   - handleGenerateThemes  — calls POST /themes with all saved books, stores themes in state
@@ -26,11 +28,10 @@
  * Display props removed: centeredBook, handleCenterBook, recommendedBooks
  * Display props added:   selectionMode, sharedThemes
  *
- * Footer layout changed to match sketch2:
- *   Left:  [search input] | [Generate Themes]
- *   Right: [AI input] [Get Recommendations →] [Select]
- *   A flex spacer separates the two groups.
- *   Search now submits on Enter (no visible Add button).
+ * Layout:
+ *   Header: <BookSearch> (fixed top bar)
+ *   Footer left:  [Generate Themes]
+ *   Footer right: [AI input] [Get Recommendations →] [Select]
  *
  * Bottom panel added above footer (placeholder — to fill with real API results).
  *
@@ -45,25 +46,13 @@
 import Display from "@/components/display";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  useActionState,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import identifyBook from "./books/identify/actions";
+import { BookSearch } from "@/components/book-search/BookSearch";
+import { useCallback, useEffect, useState } from "react";
 import fetchRecommendations from "./books/recs/fetchRecommendations";
 import { useLibrary } from "./library/useLibrary";
 import { Spinner } from "@/components/ui/spinner";
 
 export default function Home() {
-  const [state, bookFormAction, isPending] = useActionState(identifyBook, {
-    status: "idle",
-    books: [],
-    errorMessage: null,
-  });
-
   const {
     savedBooks,
     selectedBooks,
@@ -78,8 +67,6 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiQuery, setAiQuery] = useState("");
   const [showPanel, setShowPanel] = useState(false);
-
-  const submitRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const defaults: import("./books/identify/types").BookWithThemes[] = [
@@ -117,11 +104,6 @@ export default function Home() {
     defaults.forEach(handleAddSavedBook);
   }, []);
 
-  useEffect(() => {
-    const latest = state.books.at(-1);
-    if (state.status === "success" && latest) handleAddSavedBook(latest);
-  }, [state.books, state.status, handleAddSavedBook]);
-
   const onFetchRecommendations = useCallback(
     async (theme: string) => {
       const books = await fetchRecommendations(theme);
@@ -153,6 +135,8 @@ export default function Home() {
 
   return (
     <main className="bg-white dark:bg-black w-full h-full">
+      <BookSearch savedBooks={savedBooks} handleAddSavedBook={handleAddSavedBook} />
+
       <Display
         savedBooks={savedBooks}
         selectedBooks={selectedBooks}
@@ -185,25 +169,6 @@ export default function Home() {
       )}
 
       <footer className="fixed bottom-0 left-0 w-full bg-white border-t border-stone-200 px-6 py-3 flex items-center gap-3 z-10">
-        <form action={bookFormAction} className="contents">
-          <Input
-            name="book"
-            placeholder="Type a book title, press Enter..."
-            className="w-60 bg-stone-50"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submitRef.current?.click();
-            }}
-          />
-          <button
-            ref={submitRef}
-            type="submit"
-            className="hidden"
-            disabled={isPending}
-          />
-        </form>
-
-        <div className="w-px h-6 bg-stone-300 mx-1" />
-
         <Button
           onClick={handleGenerateThemes}
           disabled={isGenerating || savedBooks.length === 0}
