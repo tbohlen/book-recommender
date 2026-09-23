@@ -6,6 +6,7 @@ import { BookSearchDialog } from "./BookSearchDialog";
 import { useBookSearch } from "@/hooks/useBookSearch";
 import { selectBook } from "@/app/books/identify/actions";
 import { BookWithThemes, IdentifiedBook } from "@/app/books/identify/types";
+import { bookKey } from "@/app/library/bookKey";
 
 interface BookSearchProps {
   savedBooks: BookWithThemes[];
@@ -23,7 +24,9 @@ export function BookSearch({ savedBooks, handleAddSavedBook }: BookSearchProps) 
   const [dialogOpen, setDialogOpen] = useState(false);
   const bookSearch = useBookSearch();
 
-  const savedBookIds = new Set(savedBooks.map((b) => b.id));
+  // Compare by bookKey (title + first author), not volume id, so a
+  // different edition of a saved book also shows as "Saved".
+  const savedBookKeys = new Set(savedBooks.map(bookKey));
 
   function handleQueryChange(value: string) {
     setQuery(value);
@@ -40,6 +43,9 @@ export function BookSearch({ savedBooks, handleAddSavedBook }: BookSearchProps) 
     if (!open) bookSearch.cancel();
   }
 
+  // TODO(dedupe): skip selectBook (a Claude call) when the book is already
+  // in the library, e.g. as a recommendation — ADD_SAVED_BOOK keeps the
+  // library's copy, so the freshly extracted themes are discarded. See TODO.md.
   const handleSave = useCallback(
     async (book: IdentifiedBook) => {
       const bookWithThemes = await selectBook(book);
@@ -58,7 +64,7 @@ export function BookSearch({ savedBooks, handleAddSavedBook }: BookSearchProps) 
         results={bookSearch.results}
         status={bookSearch.status}
         errorMessage={bookSearch.errorMessage}
-        savedBookIds={savedBookIds}
+        savedBookKeys={savedBookKeys}
         onSave={handleSave}
       />
     </div>
