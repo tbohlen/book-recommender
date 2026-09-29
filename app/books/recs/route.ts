@@ -76,12 +76,13 @@ export async function POST(req: Request) {
 
   let recommendations: RecommendedBookQuery[];
   try {
-    const systemPrompt = prompt ? recFromPromptPrompt : recPrompt;
+    const systemPrompt =
+      prompt || books?.length ? recFromPromptPrompt : recPrompt;
     recommendations = await requestRecommendations(
       systemPrompt,
-      theme,
-      books,
-      prompt,
+      theme ?? undefined,
+      books ?? undefined,
+      prompt ?? undefined,
     );
   } catch (error) {
     console.error("Error getting book recommendations:", error);

@@ -144,6 +144,8 @@ export default function Display({
           color: string;
         } | null = null;
 
+        const coverCache = new Map<string, HTMLImageElement | null>();
+
         // ─── Coordinate helper ────────────────────────────────────────────────────
         function toWorld(sx: number, sy: number) {
           return { x: (sx - panX) / zoom, y: (sy - panY) / zoom };
@@ -151,6 +153,7 @@ export default function Display({
 
         // ─── setThemes ────────────────────────────────────────────────────────────
         function setThemes(themes: string[]) {
+          if (!themes) return;
           themeNodes = buildThemeNodes({ x: 0, y: 0 }, themes);
         }
 
@@ -367,6 +370,9 @@ export default function Display({
         }
 
         function drawRecNode(r: RecNode) {
+          r.selected = propsRef.current.selectedBooks.some(
+            (b) => b.id === r.book.id,
+          );
           const m = toWorld(p.mouseX, p.mouseY);
           const hovered = p.dist(m.x, m.y, r.x, r.y) < REC_R;
           const badgeX = r.x + REC_R * 0.72,
@@ -511,8 +517,33 @@ export default function Display({
             if (hovered) p.stroke("#6366f1");
             else p.stroke(255);
             p.strokeWeight(hovered ? 2 : 1.5);
-            p.fill(PALETTE[i % PALETTE.length]);
-            p.rect(0, 0, bw, bh, 3);
+
+            const coverUrl =
+              book.imageLinks?.thumbnail ?? book.imageLinks?.smallThumbnail;
+            const cached = coverUrl ? coverCache.get(book.id) : undefined;
+
+            if (coverUrl && cached === undefined) {
+              coverCache.set(book.id, null);
+              const img = new window.Image();
+              img.onload = () => {
+                coverCache.set(book.id, img);
+              };
+              img.src = coverUrl;
+            }
+
+            if (cached) {
+              const ctx = p.drawingContext as CanvasRenderingContext2D;
+              ctx.drawImage(cached, -bw / 2, -bh / 2, bw, bh);
+              p.noFill();
+              if (hovered) p.stroke("#6366f1");
+              else p.stroke(255);
+              p.strokeWeight(hovered ? 2 : 1.5);
+              p.rect(0, 0, bw, bh, 3);
+            } else {
+              p.fill(PALETTE[i % PALETTE.length]);
+              p.rect(0, 0, bw, bh, 3);
+            }
+
             p.pop();
 
             ctx.shadowBlur = 0;
@@ -586,9 +617,19 @@ export default function Display({
             ctx.shadowBlur = 0;
             ctx.shadowOffsetY = 0;
 
-            p.fill(e.color);
-            p.noStroke();
-            p.rect(e.x, e.y - CARD_H * 0.12, CARD_W - 24, CARD_H * 0.55, 8);
+            const coverImgW = CARD_W - 24;
+            const coverImgH = CARD_H * 0.55;
+            const coverX = e.x - coverImgW / 2;
+            const coverY = e.y - CARD_H * 0.12 - coverImgH / 2;
+            const coverImg = coverCache.get(e.book.id);
+
+            if (coverImg) {
+              ctx.drawImage(coverImg, coverX, coverY, coverImgW, coverImgH);
+            } else {
+              p.fill(e.color);
+              p.noStroke();
+              p.rect(e.x, e.y - CARD_H * 0.12, CARD_W - 24, CARD_H * 0.55, 8);
+            }
 
             p.noStroke();
             p.fill(30);
@@ -728,7 +769,9 @@ export default function Display({
               p.abs(p.mouseX - sb._screenX) < (sb._screenW ?? 0) / 2 + 6 &&
               p.abs(p.mouseY - sb._screenY!) < (sb._screenH ?? 0) / 2 + 6
             ) {
-              const bookIdx = propsRef.current.savedBooks.findIndex(bk => bk.id === b.id);
+              const bookIdx = propsRef.current.savedBooks.findIndex(
+                (bk) => bk.id === b.id,
+              );
               expandedDialBook = {
                 book: b,
                 flipped: false,
@@ -760,6 +803,7 @@ export default function Display({
                 by = r.y - REC_R * 0.72;
               if (p.dist(m.x, m.y, bx, by) < SAVE_BTN_R) {
                 r.selected = !r.selected;
+                propsRef.current.handleSelectBook(r.book);
                 return;
               }
             }
@@ -771,6 +815,8 @@ export default function Display({
                 r.saved = !r.saved;
                 if (r.saved) {
                   propsRef.current.handleSaveBook(r.book);
+                } else {
+                  propsRef.current.handleUnsaveBook(r.book);
                 }
                 return;
               }
@@ -814,7 +860,8 @@ export default function Display({
           if (isDraggingDial) {
             const { cx, cy } = dialGeometry();
             const curAngle = p.atan2(p.mouseY - cy, p.mouseX - cx);
-            dialRotation = dialDragStartRotation + (curAngle - dialDragStartAngle);
+            dialRotation =
+              dialDragStartRotation + (curAngle - dialDragStartAngle);
             return;
           }
           if (isPanning) {

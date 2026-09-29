@@ -68,41 +68,28 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiQuery, setAiQuery] = useState("");
   const [showPanel, setShowPanel] = useState(false);
+  const [recBooks, setRecBooks] = useState<BookWithThemes[]>([]);
+
+  useEffect(() => {}, [savedBooks]);
 
   useEffect(() => {
-    const defaults: import("./books/identify/types").BookWithThemes[] = [
-      {
-        id: "1",
-        title: "The Alchemist",
-        authors: ["Paulo Coelho"],
-        themes: ["Journey", "Destiny", "Faith"],
-      },
-      {
-        id: "2",
-        title: "Siddhartha",
-        authors: ["Hermann Hesse"],
-        themes: ["Wisdom", "Identity", "Philosophy"],
-      },
-      {
-        id: "3",
-        title: "Beloved",
-        authors: ["Toni Morrison"],
-        themes: ["Memory", "Loss", "Freedom"],
-      },
-      {
-        id: "4",
-        title: "Man's Search for Meaning",
-        authors: ["Viktor Frankl"],
-        themes: ["Survival", "Purpose", "Redemption"],
-      },
-      {
-        id: "5",
-        title: "The Prophet",
-        authors: ["Kahlil Gibran"],
-        themes: ["Love", "Nature", "Time"],
-      },
+    const seedQueries = [
+      "The Alchemist Paulo Coelho",
+      "Siddhartha Hermann Hesse",
+      "Beloved Toni Morrison",
+      "Man's Search for Meaning Viktor Frankl",
+      "The Prophet Kahlil Gibran",
     ];
-    defaults.forEach(handleAddSavedBook);
+
+    Promise.all(
+      seedQueries.map((q) =>
+        fetch(`/books/search?q=${encodeURIComponent(q)}`)
+          .then((r) => r.json())
+          .then((books) => {
+            if (books[0]) handleAddSavedBook({ ...books[0], themes: null });
+          }),
+      ),
+    );
   }, []);
 
   const onFetchRecommendations = useCallback(
@@ -122,24 +109,38 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ books: savedBooks }),
       });
+      if (!res.ok) return;
       const { themes }: { themes: string[] } = await res.json();
-      setSharedThemes(themes);
+      if (themes) setSharedThemes(themes);
     } finally {
       setIsGenerating(false);
     }
   }
-  const handleGetRecs = useCallback(
-    async () => {
-      const recommendedBooks = await fetchRecommendations(
-        null,
-        selectedBooks,
-        aiQuery,
-      );
-      console.log("Recommendations:", recommendedBooks);
-      setShowPanel(true);
-    },
-    [selectedBooks, aiQuery],
-  );
+  const handleGetRecs = useCallback(async () => {
+    console.log("Generating recs with:", {
+      books: selectedBooks,
+      themes: sharedThemes,
+      prompt: aiQuery,
+    });
+    const recommendedBooks = await fetchRecommendations(
+      null,
+      selectedBooks,
+      aiQuery,
+    );
+    console.log("Returned recommended books:", recommendedBooks);
+
+    const selectedTitles = new Set(
+      selectedBooks.map((b) => b.title?.toLowerCase()),
+    );
+    const overlap = recommendedBooks.filter((b) =>
+      selectedTitles.has(b.title?.toLowerCase()),
+    );
+    console.log("Overlap with selected books:", overlap);
+
+    setRecBooks(recommendedBooks);
+    handleAddRecommendedBooks(recommendedBooks, aiQuery || "recommended");
+    setShowPanel(true);
+  }, [selectedBooks, aiQuery]);
 
   return (
     <main className="bg-white dark:bg-black w-full h-full">
@@ -172,10 +173,67 @@ export default function Home() {
               ✕
             </button>
           </div>
-          <p className="text-sm text-stone-400">
-            AI recommendations will appear here. Wire up POST
-            /api/books/ai-query.
-          </p>
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {recBooks.map((book, i) => {
+              const palette = [
+                "#abcd5e",
+                "#14976b",
+                "#2b67af",
+                "#62b6de",
+                "#f589a3",
+                "#ef562f",
+                "#fc8405",
+                "#f9d531",
+              ];
+              return (
+                <div
+                  key={book.id ?? i}
+                  className="flex-none w-44 rounded-xl            
+  overflow-hidden border border-stone-100 shadow-sm bg-white"
+                >
+                  {book.imageLinks?.thumbnail ? (
+                    <img
+                      src={book.imageLinks.thumbnail}
+                      alt={book.title ?? ""}
+                      className="h-24 w-full object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="h-24"
+                      style={{ backgroundColor: palette[i % palette.length] }}
+                    />
+                  )}
+                  <div className="p-3 flex flex-col gap-1">
+                    <p
+                      className="text-xs font-bold text-stone-800 leading-tight        
+  line-clamp-2"
+                    >
+                      {book.title}
+                    </p>
+                    <p
+                      className="text-xs text-stone-400 leading-tight                
+  line-clamp-1"
+                    >
+                      {book.authors?.join(", ")}
+                    </p>
+                    {book.themes && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {book.themes.slice(0, 3).map((t) => (
+                          <span
+                            key={t}
+                            className="text-[9px] bg-stone-100            
+  text-stone-500 px-1.5 py-0.5 rounded-full"
+                          >
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
